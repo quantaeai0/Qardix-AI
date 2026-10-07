@@ -1,0 +1,8 @@
+backend/
+docs/
+
+qardix-backend/.env
+qardix-backend/.env.example
+qardix-backend/myenv
+
+
