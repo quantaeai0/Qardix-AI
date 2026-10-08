@@ -107,6 +107,7 @@ class PatientAssessment(Base):
     created_at            = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
 
     doctor          = relationship("User", back_populates="assessments", foreign_keys=[doctor_id])
+    company         = relationship("Company", foreign_keys=[company_id])
     ecg_record      = relationship("EcgRecord", back_populates="assessment", uselist=False, cascade="all, delete-orphan")
     ai_result       = relationship("AiResult", back_populates="assessment", uselist=False, cascade="all, delete-orphan")
     validation      = relationship("DoctorValidation", back_populates="assessment", uselist=False, cascade="all, delete-orphan")

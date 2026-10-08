@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Database, FileSpreadsheet, FileText } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { apiRequest } from "@/lib/api-client";
 import { adminQuery } from "@/lib/admin-data";
 import { downloadCsv, downloadXlsx } from "@/lib/export";
 import { PageHeader, Panel, Sel } from "@/components/kit";
@@ -32,7 +32,7 @@ function ExportPage() {
   const [busy, setBusy] = useState(false);
 
   async function fetchSection(t: T) {
-    const { data } = await supabase.from(t).select("*");
+    const data = await apiRequest(`/export/${t}`).catch(() => []);
     let rows = (data ?? []) as any[];
     const dateKey = t === "doctor_validations" ? "validated_at" : t === "reports" ? "generated_at" : "created_at";
     if (company !== "all") rows = rows.filter((r) => (t === "companies" ? r.id : r.company_id) === company);

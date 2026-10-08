@@ -26,13 +26,23 @@ export interface Account {
   role: string;
 }
 
+export interface UsageEvent {
+  id?: string;
+  company_id: string | null;
+  doctor_id: string;
+  event_type: string;
+  analysis_status?: string | null;
+  created_at: string;
+}
+
 export const adminQuery = queryOptions({
   queryKey: ["admin-core"],
   queryFn: async () => {
     try {
-      const [companies, users] = await Promise.all([
+      const [companies, users, events] = await Promise.all([
         companiesApi.list(),
         usersApi.list(),
+        analyticsApi.getEvents().catch(() => []),
       ]);
 
       const accounts = (users || []).map((u: any) => ({
@@ -51,11 +61,11 @@ export const adminQuery = queryOptions({
       return {
         companies: (companies || []) as Company[],
         accounts,
-        events: [],
+        events: (events || []) as UsageEvent[],
       };
     } catch (err) {
       console.error("Failed to load admin query from FastAPI:", err);
-      return { companies: [], accounts: [], events: [] };
+      return { companies: [], accounts: [], events: [] as UsageEvent[] };
     }
   },
 });

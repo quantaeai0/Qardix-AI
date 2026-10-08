@@ -1,4 +1,4 @@
-import { DEMO_CASES, pickCase, type EcgAnalysisResult } from "./mock-ai";
+import type { EcgAnalysisResult } from "./mock-ai";
 
 export interface AnalyzeEcgInput {
   age: number;
@@ -10,12 +10,8 @@ export interface AnalyzeEcgInput {
   image_path?: string | null;
 }
 
-export async function analyzeEcg(data: AnalyzeEcgInput): Promise<EcgAnalysisResult> {
-  const key = pickCase(data);
-  return {
-    ...DEMO_CASES[key],
-    quality_status: "accepted",
-    model_version: "DeepECG-WCR77-v1.0",
-    case_key: key,
-  };
+/** Deprecated: ECG analysis is processed via FastAPI backend /api/v1/ecg/upload */
+export async function analyzeEcg(_data: AnalyzeEcgInput): Promise<Partial<EcgAnalysisResult>> {
+  throw new Error("Local mock analysis is deprecated. ECG analysis is processed via FastAPI backend.");
 }
+

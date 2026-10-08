@@ -218,3 +218,41 @@ async def toggle_user_status(
     await db.refresh(u)
 
     return await get_user(user_id=u.id, current_user=admin, db=db)
+
+
+@router.patch("/{user_id}", response_model=UserResponse)
+async def update_user(
+    user_id: UUID,
+    payload: UserUpdate,
+    admin: User = Depends(require_super_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Edit a doctor or MM profile.
+    Super Admin only. Updatable fields: display_name, specialty, company_id, status.
+    Email and role cannot be changed after creation.
+    """
+    stmt = select(User).options(selectinload(User.company)).where(User.id == user_id)
+    u = (await db.execute(stmt)).scalar_one_or_none()
+
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if payload.display_name is not None:
+        u.display_name = payload.display_name.strip()
+    if payload.specialty is not None:
+        u.specialty = payload.specialty.strip() if payload.specialty else None
+    if payload.status is not None:
+        u.status = payload.status
+    if payload.company_id is not None:
+        # Verify the new company exists
+        comp = (await db.execute(select(Company).where(Company.id == payload.company_id))).scalar_one_or_none()
+        if not comp:
+            raise HTTPException(status_code=404, detail="Company not found")
+        u.company_id = payload.company_id
+
+    await db.commit()
+    await db.refresh(u)
+
+    return await get_user(user_id=u.id, current_user=admin, db=db)
+

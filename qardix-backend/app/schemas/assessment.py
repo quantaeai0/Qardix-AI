@@ -32,6 +32,8 @@ class PatientAssessmentResponse(BaseModel):
     anonymous_patient_id: str
     doctor_id: UUID
     company_id: Optional[UUID] = None
+    doctor_name: Optional[str] = None
+    company_name: Optional[str] = None
     age: int
     sex: str
     height_cm: float
@@ -47,6 +49,13 @@ class PatientAssessmentResponse(BaseModel):
     medicines: List[str]
     training_consent: bool
     created_at: datetime
+    ai_summary: Optional[str] = None
+    urgency: Optional[str] = None
+    quality_status: Optional[str] = None
+    processing_status: Optional[str] = None
+    validation_status: Optional[str] = None
+    report_code: Optional[str] = None
+    report_status: Optional[str] = None
 
     class Config:
         from_attributes = True

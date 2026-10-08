@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { FileSpreadsheet, FileText } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { apiRequest } from "@/lib/api-client";
 import { adminQuery } from "@/lib/admin-data";
 import { downloadCsv, downloadXlsx } from "@/lib/export";
 import { Empty, PageHeader, Panel, Sel } from "@/components/kit";
@@ -13,7 +13,7 @@ export function RawTable({ table, title, subtitle, cols }: { table: "patient_ass
   const { data: core } = useQuery(adminQuery);
   const { data = [] } = useQuery({
     queryKey: ["raw", table],
-    queryFn: async () => (await supabase.from(table).select("*").order(table === "doctor_validations" ? "validated_at" : "created_at", { ascending: false })).data ?? [],
+    queryFn: async () => (await apiRequest(`/export/${table}`).catch(() => [])) ?? [],
   });
   const [company, setCompany] = useState("all");
   const ctx = {

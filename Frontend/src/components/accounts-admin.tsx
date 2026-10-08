@@ -1,11 +1,10 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Pencil, Plus } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { usersApi } from "@/lib/api-client";
 import { adminQuery, type Account } from "@/lib/admin-data";
 import { createAccount } from "@/lib/admin.functions";
 import { PageHeader, Panel, Sel, StatusBadge, fmtDate } from "@/components/kit";
@@ -20,10 +19,14 @@ type Kind = "doctor" | "marketing_manager";
 export function useToggleAccount() {
   const qc = useQueryClient();
   return async (a: Account) => {
-    const { error } = await supabase.from("profiles").update({ status: a.status === "active" ? "inactive" : "active" }).eq("id", a.id);
-    if (error) return void toast.error(error.message);
-    toast.success(`${a.display_name} ${a.status === "active" ? "deactivated" : "activated"}`);
-    qc.invalidateQueries({ queryKey: ["admin-core"] });
+    try {
+      const nextStatus = a.status === "active" ? "inactive" : "active";
+      await usersApi.toggleStatus(a.id, nextStatus);
+      toast.success(`${a.display_name} ${nextStatus === "inactive" ? "deactivated" : "activated"}`);
+      qc.invalidateQueries({ queryKey: ["admin-core"] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to toggle account status");
+    }
   };
 }
 
@@ -94,7 +97,6 @@ const baseSchema = z.object({
 
 function AccountDialog({ kind, value, companies, onClose }: { kind: Kind; value: Partial<Omit<Account, "company_id">> & { company_id?: string | null | undefined }; companies: { id: string; name: string }[]; onClose: () => void }) {
   const qc = useQueryClient();
-  const create = useServerFn(createAccount);
   const [f, setF] = useState({
     display_name: value.display_name ?? "", login_id: value.login_id ?? "", company_id: value.company_id ?? "", specialty: value.specialty ?? "",
     email: value.email ?? "", status: value.status ?? "active", temp_password: "",
@@ -105,19 +107,22 @@ function AccountDialog({ kind, value, companies, onClose }: { kind: Kind; value:
     const p = baseSchema.safeParse(f);
     if (!p.success) return void toast.error(p.error.issues[0]?.message ?? "Invalid input");
     setBusy(true);
-    if (value.id) {
-      const { error } = await supabase.from("profiles").update({ display_name: p.data.display_name, company_id: p.data.company_id, specialty: p.data.specialty || null, email: p.data.email || null, status: p.data.status }).eq("id", value.id);
+    try {
+      if (value.id) {
+        await usersApi.toggleStatus(value.id, p.data.status);
+      } else {
+        if (f.temp_password.length < 4) { setBusy(false); return void toast.error("Temporary password must be at least 4 characters"); }
+        const res = await createAccount({ ...p.data, role: kind, temp_password: f.temp_password, login_id: p.data.login_id.toLowerCase() });
+        if (!res.ok) return void toast.error(res.error);
+      }
+      toast.success(value.id ? "Account updated" : "Account created");
+      qc.invalidateQueries({ queryKey: ["admin-core"] });
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save user account");
+    } finally {
       setBusy(false);
-      if (error) return void toast.error(error.message);
-    } else {
-      if (f.temp_password.length < 4) { setBusy(false); return void toast.error("Temporary password must be at least 4 characters"); }
-      const res = await create({ data: { ...p.data, role: kind, temp_password: f.temp_password, login_id: p.data.login_id.toLowerCase() } });
-      setBusy(false);
-      if (!res.ok) return void toast.error(res.error);
     }
-    toast.success(value.id ? "Account updated" : "Account created");
-    qc.invalidateQueries({ queryKey: ["admin-core"] });
-    onClose();
   }
   const fld = (k: keyof typeof f, label: string, req = true, extra?: Record<string, unknown>) => (
     <div className="space-y-1.5"><Label>{label}{req && " *"}</Label><Input value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} {...extra} /></div>

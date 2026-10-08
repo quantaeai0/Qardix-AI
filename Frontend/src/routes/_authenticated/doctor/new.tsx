@@ -1,5 +1,4 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useServerFn } from "@tanstack/react-start";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
@@ -8,8 +7,7 @@ import {
   AlertTriangle, ArrowLeft, ArrowRight, Camera, Check, CheckCircle2, Download, HeartPulse, ImageUp, Lock, Printer,
   RefreshCw, ShieldCheck, Upload, XCircle,
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { analyzeEcg } from "@/lib/ecg-analysis.functions";
+import { assessmentApi } from "@/lib/api-client";
 import type { EcgAnalysisResult } from "@/lib/mock-ai";
 import { downloadReportPdf, loadReportBundle, type ReportBundle } from "@/lib/reports";
 import { EcgLine } from "@/components/brand";
@@ -56,7 +54,6 @@ function Wizard() {
   const { session } = Route.useRouteContext();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const analyze = useServerFn(analyzeEcg);
   const [step, setStep] = useState(0);
   const [patientId] = useState(genPatientId);
   const [c, setC] = useState<Clinical>({ age: "", sex: "", height_cm: "", weight_kg: "", bp_systolic: "", bp_diastolic: "", heart_rate: "", spo2: "", diabetes_status: "" });
@@ -113,41 +110,51 @@ function Wizard() {
     const timer = setInterval(() => setStage((s) => Math.min(s + 1, STAGES.length - 1)), 1100);
     try {
       const sym = Object.fromEntries(Object.entries(symptoms).map(([k, v]) => [k, !!v]));
-      const path = `${session.userId}/${patientId}-${Date.now()}.${file!.type === "image/png" ? "png" : "jpg"}`;
-      const up = await supabase.storage.from("ecg-images").upload(path, file!, { contentType: file!.type });
-      if (up.error) throw up.error;
-      const [res] = await Promise.all([
-        analyze({ data: { age: Number(c.age), sex: c.sex, heart_rate: Number(c.heart_rate), spo2: Number(c.spo2), bp_systolic: Number(c.bp_systolic), symptoms: sym, image_path: path } }),
-        new Promise((r) => setTimeout(r, 4600)),
-      ]);
-      const company_id = session.profile.company_id;
-      const { data: a, error: aErr } = await supabase.from("patient_assessments").insert({
-        anonymous_patient_id: patientId, doctor_id: session.userId, company_id,
-        age: Number(c.age), sex: c.sex, height_cm: Number(c.height_cm), weight_kg: Number(c.weight_kg), bmi,
-        bp_systolic: Number(c.bp_systolic), bp_diastolic: Number(c.bp_diastolic), heart_rate: Number(c.heart_rate), spo2: Number(c.spo2),
-        diabetes_status: c.diabetes_status, diabetic_complications: complications, symptoms: sym, medicines: meds, training_consent: consent,
-      }).select().single();
-      if (aErr || !a) throw aErr;
-      const { data: e } = await supabase.from("ecg_records").insert({
-        assessment_id: a.id, doctor_id: session.userId, company_id, image_path: path, quality_status: res.quality_status,
-        processing_status: "completed", model_version: res.model_version,
-      }).select().single();
-      const { data: ai, error: aiErr } = await supabase.from("ai_results").insert({
-        ecg_record_id: e!.id, assessment_id: a.id, doctor_id: session.userId, company_id, ai_summary: res.ai_summary,
-        findings: res.findings, confidence_json: { overall: res.confidence }, abnormal_leads: res.abnormal_leads, urgency: res.urgency,
-        patient_explanation: res.patient_explanation, warning_signs: res.warning_signs, raw_output_json: res as never,
-      }).select().single();
-      if (aiErr || !ai) throw aiErr;
-      await supabase.from("usage_events").insert({ company_id, doctor_id: session.userId, event_type: "analysis_completed", analysis_status: res.urgency });
-      setIds({ assessment: a.id, ai: ai.id });
+      
+      const assessment = await assessmentApi.create({
+        age: Number(c.age),
+        sex: c.sex,
+        height_cm: Number(c.height_cm),
+        weight_kg: Number(c.weight_kg),
+        bp_systolic: Number(c.bp_systolic),
+        bp_diastolic: Number(c.bp_diastolic),
+        heart_rate: Number(c.heart_rate),
+        spo2: Number(c.spo2),
+        diabetes_status: c.diabetes_status,
+        diabetic_complications: complications,
+        symptoms: sym,
+        medicines: meds,
+        training_consent: consent,
+      });
+
+      const ecgResponse = await assessmentApi.uploadECG(assessment.id, file!);
+
+      const ai = ecgResponse.ai_result;
+      if (!ai) {
+        throw new Error(ecgResponse.quality_reason || "ECG processing failed");
+      }
+
+      const res: EcgAnalysisResult = {
+        quality_status: ecgResponse.quality_status,
+        model_version: ai.model_version || "DeepECG WCR-77 v2.4",
+        ai_summary: ai.ai_summary,
+        findings: ai.findings || [],
+        confidence: ai.confidence_json?.overall || 0.92,
+        abnormal_leads: ai.abnormal_leads || [],
+        urgency: ai.urgency,
+        patient_explanation: ai.patient_explanation,
+        warning_signs: ai.warning_signs || [],
+      };
+
+      setIds({ assessment: assessment.id, ai: ai.id });
       setResult(res);
       clearInterval(timer);
       setStage(STAGES.length);
       setTimeout(() => setStep(4), 500);
-    } catch (err) {
+    } catch (err: any) {
       clearInterval(timer);
       console.error(err);
-      toast.error("Analysis failed. Please try again.");
+      toast.error(err.message || "Analysis failed. Please try again.");
       setStep(2);
     }
   }
@@ -157,19 +164,20 @@ function Wizard() {
     if (vStatus === "correct" && corrected.trim().length < 5) return void toast.error("Enter your final interpretation");
     if (!ids) return;
     setSavingV(true);
-    const company_id = session.profile.company_id;
-    const { data: v, error } = await supabase.from("doctor_validations").insert({
-      ai_result_id: ids.ai, assessment_id: ids.assessment, doctor_id: session.userId, company_id, status: vStatus,
-      corrected_interpretation: vStatus === "correct" ? corrected.trim().slice(0, 2000) : null, notes: notes.trim().slice(0, 2000) || null,
-    }).select().single();
-    if (error || !v) { setSavingV(false); return void toast.error("Could not save validation"); }
-    const code = `QX-R-${Date.now().toString(36).toUpperCase().slice(-6)}`;
-    await supabase.from("reports").insert({ report_code: code, assessment_id: ids.assessment, validation_id: v.id, doctor_id: session.userId, company_id, report_status: "generated" });
-    await supabase.from("usage_events").insert({ company_id, doctor_id: session.userId, event_type: "report_generated", analysis_status: "generated" });
-    setBundle(await loadReportBundle(ids.assessment));
-    qc.invalidateQueries({ queryKey: ["cases"] });
-    setSavingV(false);
-    setStep(6);
+    try {
+      await assessmentApi.validate(ids.assessment, {
+        status: vStatus,
+        corrected_interpretation: vStatus === "correct" ? corrected.trim().slice(0, 2000) : undefined,
+        notes: notes.trim().slice(0, 2000) || undefined,
+      });
+      setBundle(await loadReportBundle(ids.assessment));
+      qc.invalidateQueries({ queryKey: ["cases"] });
+      setSavingV(false);
+      setStep(6);
+    } catch (err: any) {
+      setSavingV(false);
+      toast.error(err.message || "Could not save validation");
+    }
   }
 
   useEffect(() => { window.scrollTo({ top: 0, behavior: "smooth" }); }, [step]);

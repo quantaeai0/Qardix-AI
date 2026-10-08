@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
+const API_BASE_URL = import.meta.env["VITE_API_URL"] || "http://localhost:8000/api/v1";
 
 export function getAuthHeader(): Record<string, string> {
   const token = localStorage.getItem("qardix_access_token");
@@ -130,7 +130,7 @@ export const assessmentApi = {
     return response.json();
   },
 
-  validate: (assessment_id: string, data: { status: string; corrected_interpretation?: string; notes?: string }) =>
+  validate: (assessment_id: string, data: { status: string; corrected_interpretation?: string | null | undefined; notes?: string | null | undefined }) =>
     apiRequest(`/assessments/${assessment_id}/validate`, {
       method: "POST",
       body: JSON.stringify(data),
@@ -141,4 +141,10 @@ export const assessmentApi = {
 export const analyticsApi = {
   getDashboard: () => apiRequest("/analytics/dashboard"),
   getDoctorUsage: () => apiRequest("/analytics/doctors"),
+  getEvents: (company_id?: string) => {
+    const params = new URLSearchParams();
+    if (company_id) params.append("company_id", company_id);
+    return apiRequest(`/analytics/events?${params.toString()}`);
+  },
 };
+

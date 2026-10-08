@@ -5,4 +5,10 @@ qardix-backend/.env
 qardix-backend/.env.example
 qardix-backend/myenv
 
+# Python specific ignores
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
 
+qardix-backend/DEVELOPMENT.md

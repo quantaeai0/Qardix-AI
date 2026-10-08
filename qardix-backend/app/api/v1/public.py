@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.database.connection import get_db
 from app.models.models import DemoRequest
@@ -28,3 +29,11 @@ async def request_demo(payload: DemoRequestCreate, db: AsyncSession = Depends(ge
         message=req.message,
         created_at=req.created_at,
     )
+
+
+@router.get("/demo-requests", response_model=list[DemoRequestResponse])
+async def list_demo_requests(db: AsyncSession = Depends(get_db)):
+    stmt = select(DemoRequest).order_by(DemoRequest.created_at.desc())
+    res = await db.execute(stmt)
+    return res.scalars().all()
+

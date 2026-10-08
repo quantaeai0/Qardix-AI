@@ -77,5 +77,7 @@ def require_roles(*allowed_roles: AppRole):
 
 
 require_super_admin = require_roles(AppRole.super_admin)
+require_admin_or_superadmin = require_super_admin
 require_marketing_manager = require_roles(AppRole.marketing_manager, AppRole.super_admin)
 require_doctor = require_roles(AppRole.doctor, AppRole.super_admin)
+

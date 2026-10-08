@@ -29,13 +29,13 @@ export async function fetchCases(): Promise<CaseRow[]> {
       sex: x.sex,
       doctor_id: x.doctor_id,
       company_id: x.company_id,
-      ai_summary: x.ai_summary || "Sinus Rhythm with ST-elevation",
-      urgency: x.urgency || "routine",
-      validation_status: x.validation_status || null,
-      report_code: x.report_code || null,
-      report_status: x.report_status || null,
-      quality_status: x.quality_status || "accepted",
-      processing_status: x.processing_status || "completed",
+      ai_summary: x.ai_summary ?? null,
+      urgency: x.urgency ?? null,
+      validation_status: x.validation_status ?? null,
+      report_code: x.report_code ?? null,
+      report_status: x.report_status ?? null,
+      quality_status: x.quality_status ?? null,
+      processing_status: x.processing_status ?? null,
     }));
   } catch (err) {
     console.error("Failed to fetch cases from FastAPI backend:", err);

@@ -5,7 +5,7 @@ from typing import Optional
 from uuid import UUID
 
 from app.database.connection import get_db
-from app.models.models import User, Company, PatientAssessment, AccountStatus, AppRole
+from app.models.models import User, Company, PatientAssessment, AccountStatus, AppRole, UsageEvent
 from app.auth.dependencies import require_marketing_manager, get_current_user
 
 router = APIRouter(prefix="/analytics", tags=["Usage Analytics"])
@@ -94,3 +94,37 @@ async def get_doctor_usage_analytics(
         })
 
     return usage_list
+
+
+@router.get("/events")
+async def get_usage_events(
+    company_id: Optional[UUID] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    stmt = select(UsageEvent).order_by(UsageEvent.created_at.desc())
+
+    if current_user.role == AppRole.marketing_manager:
+        if not current_user.company_id:
+            return []
+        stmt = stmt.where(UsageEvent.company_id == current_user.company_id)
+    elif current_user.role == AppRole.doctor:
+        stmt = stmt.where(UsageEvent.doctor_id == current_user.id)
+    elif current_user.role == AppRole.super_admin:
+        if company_id:
+            stmt = stmt.where(UsageEvent.company_id == company_id)
+
+    res = await db.execute(stmt)
+    events = res.scalars().all()
+    return [
+        {
+            "id": str(e.id),
+            "company_id": str(e.company_id) if e.company_id else None,
+            "doctor_id": str(e.doctor_id),
+            "event_type": e.event_type,
+            "analysis_status": e.analysis_status,
+            "created_at": e.created_at.isoformat() if e.created_at else "",
+        }
+        for e in events
+    ]
+

@@ -21,7 +21,10 @@ export const mmQuery = queryOptions({
   queryKey: ["mm-usage"],
   queryFn: async () => {
     try {
-      const doctors = await analyticsApi.getDoctorUsage();
+      const [doctors, events] = await Promise.all([
+        analyticsApi.getDoctorUsage(),
+        analyticsApi.getEvents().catch(() => []),
+      ]);
       const formattedDocs = (doctors || []).map((d: any) => ({
         id: d.doctor_id,
         display_name: d.doctor_name,
@@ -31,10 +34,10 @@ export const mmQuery = queryOptions({
         last_activity_at: d.last_activity_at,
       })) as MmDoctor[];
 
-      return { doctors: formattedDocs, events: [] };
+      return { doctors: formattedDocs, events: (events || []) as UsageEvent[] };
     } catch (err) {
       console.error("Failed to load MM query from FastAPI:", err);
-      return { doctors: [], events: [] };
+      return { doctors: [], events: [] as UsageEvent[] };
     }
   },
 });

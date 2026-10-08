@@ -1,6 +1,31 @@
+"""
+DEPRECATED — Legacy monolithic ECG inference service.
+
+This module has been replaced by the modular ECG AI pipeline:
+    app/ai/pipeline.py  →  ECGPipeline.run()
+
+The new pipeline separates:
+  - Preprocessing (image_processor, digitiser, model_input_builder)
+  - Inference providers (mock / colab / local)
+  - Postprocessing (prediction_normaliser, urgency_engine, explanation_generator)
+
+This file is kept for reference only and is no longer called by any API route.
+The ECG upload endpoint (app/api/v1/ecg.py) now uses ECGPipeline directly.
+
+DO NOT add new features here.
+"""
+
+import warnings
 import httpx
 from typing import Dict, Any
 from app.config import settings
+
+warnings.warn(
+    "app.services.inference.run_ecg_inference is deprecated. "
+    "Use app.ai.pipeline.ECGPipeline instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
 async def run_ecg_inference(image_path: str, assessment_data: Dict[str, Any]) -> Dict[str, Any]:

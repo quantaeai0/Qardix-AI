@@ -3,18 +3,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.config import settings
-from app.database.connection import engine, Base
+from app.database.connection import engine
 from app.api.v1.router import api_v1_router
-from app.database.seed import seed_database
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Create tables if they don't exist
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # Tables are managed by Alembic migrations (run: alembic upgrade head).
+    # create_all is intentionally removed — Alembic is the single source of truth.
     yield
-    # Shutdown: Clean up connections
+    # Shutdown: release connection pool
     await engine.dispose()
 
 

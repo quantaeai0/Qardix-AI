@@ -3,7 +3,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { Bell, ChevronRight, LogOut, Menu, User, X, type LucideIcon } from "lucide-react";
 import { Logo, EcgLine } from "@/components/brand";
-import { supabase } from "@/integrations/supabase/client";
 import { ROLE_LABEL, type SessionInfo } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import {
@@ -29,7 +28,8 @@ export function AppShell({ session, nav, children, profileTo }: { session: Sessi
   async function signOut() {
     await qc.cancelQueries();
     qc.clear();
-    await supabase.auth.signOut();
+    localStorage.removeItem("qardix_access_token");
+    localStorage.removeItem("qardix_refresh_token");
     navigate({ to: "/auth", replace: true });
   }
 

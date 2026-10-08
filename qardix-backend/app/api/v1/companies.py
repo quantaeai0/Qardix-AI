@@ -193,3 +193,106 @@ async def toggle_company_status(
     await db.refresh(comp)
 
     return await get_company(company_id=comp.id, db=db, admin=admin)
+
+
+@router.get("/{company_id}/doctors")
+async def list_company_doctors(
+    company_id: UUID,
+    status_filter: Optional[AccountStatus] = Query(None, alias="status"),
+    search: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_super_admin),
+):
+    """
+    List all doctors belonging to a specific pharma company.
+    Used on the Company Detail page (Super Admin dashboard).
+    Includes total ECG analyses count per doctor.
+    """
+    # Verify company exists
+    comp = (await db.execute(select(Company).where(Company.id == company_id))).scalar_one_or_none()
+    if not comp:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    stmt = select(User).where(
+        User.company_id == company_id,
+        User.role == AppRole.doctor,
+    )
+    if status_filter:
+        stmt = stmt.where(User.status == status_filter)
+    if search:
+        stmt = stmt.where(
+            User.display_name.ilike(f"%{search}%") | User.email.ilike(f"%{search}%")
+        )
+    stmt = stmt.order_by(User.display_name)
+
+    doctors = (await db.execute(stmt)).scalars().all()
+
+    response_list = []
+    for doc in doctors:
+        analyses_count = (
+            await db.execute(
+                select(func.count(PatientAssessment.id)).where(PatientAssessment.doctor_id == doc.id)
+            )
+        ).scalar() or 0
+
+        response_list.append({
+            "id":                   str(doc.id),
+            "email":                doc.email,
+            "display_name":         doc.display_name,
+            "role":                 doc.role,
+            "company_id":           str(doc.company_id),
+            "company_name":         comp.name,
+            "specialty":            doc.specialty,
+            "status":               doc.status,
+            "force_password_reset": doc.force_password_reset,
+            "last_activity_at":     doc.last_activity_at,
+            "created_at":           doc.created_at,
+            "total_analyses":       analyses_count,
+        })
+
+    return response_list
+
+
+@router.get("/{company_id}/mms")
+async def list_company_mms(
+    company_id: UUID,
+    status_filter: Optional[AccountStatus] = Query(None, alias="status"),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_super_admin),
+):
+    """
+    List all Marketing Managers belonging to a specific pharma company.
+    Used on the Company Detail page (Super Admin dashboard).
+    """
+    comp = (await db.execute(select(Company).where(Company.id == company_id))).scalar_one_or_none()
+    if not comp:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    stmt = select(User).where(
+        User.company_id == company_id,
+        User.role == AppRole.marketing_manager,
+    )
+    if status_filter:
+        stmt = stmt.where(User.status == status_filter)
+    stmt = stmt.order_by(User.display_name)
+
+    mms = (await db.execute(stmt)).scalars().all()
+
+    return [
+        {
+            "id":                   str(mm.id),
+            "email":                mm.email,
+            "display_name":         mm.display_name,
+            "role":                 mm.role,
+            "company_id":           str(mm.company_id),
+            "company_name":         comp.name,
+            "specialty":            None,
+            "status":               mm.status,
+            "force_password_reset": mm.force_password_reset,
+            "last_activity_at":     mm.last_activity_at,
+            "created_at":           mm.created_at,
+            "total_analyses":       0,
+        }
+        for mm in mms
+    ]
+

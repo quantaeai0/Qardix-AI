@@ -21,11 +21,18 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # ECG Inference — the ONLY variable you need to change to switch backends
-    INFERENCE_BACKEND: str = "colab"  # "colab" | "local"
+    # "mock"  = local dev / CI (no model or network required)  ← default
+    # "colab" = Google Colab + ngrok (current production path)
+    # "local" = future local GPU (stub, not yet implemented)
+    INFERENCE_BACKEND: str = "mock"
 
     # Colab (active when INFERENCE_BACKEND=colab)
     COLAB_INFERENCE_URL: str = ""
     COLAB_API_KEY: str = ""
+
+    @property
+    def inference_backend_normalised(self) -> str:
+        return (self.INFERENCE_BACKEND or "mock").strip().lower()
 
     # Local models (active when INFERENCE_BACKEND=local)
     LOCAL_DIGITISER_MODEL_PATH: str = "./ai/ecg_digitiser/weights/"

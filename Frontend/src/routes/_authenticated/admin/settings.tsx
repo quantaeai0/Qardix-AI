@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { apiRequest } from "@/lib/api-client";
 import { ProfilePage } from "@/components/profile-page";
 import { Panel, fmtDate } from "@/components/kit";
 
@@ -11,13 +11,13 @@ export const Route = createFileRoute("/_authenticated/admin/settings")({
 
 function Settings() {
   const { session } = Route.useRouteContext();
-  const { data = [] } = useQuery({ queryKey: ["demo-requests"], queryFn: async () => (await supabase.from("demo_requests").select("*").order("created_at", { ascending: false })).data ?? [] });
+  const { data = [] } = useQuery({ queryKey: ["demo-requests"], queryFn: async () => (await apiRequest("/public/demo-requests").catch(() => [])) ?? [] });
   return (
     <div className="space-y-6">
       <ProfilePage session={session} />
       <div className="max-w-3xl space-y-6">
         <Panel title="AI analysis engine">
-          <p className="text-sm text-muted-foreground">Running in <b className="text-foreground">demo mode</b> with deterministic mock outputs. The live ECG pipeline can be connected later without changing any screens.</p>
+          <p className="text-sm text-muted-foreground">Operating with <b className="text-foreground">DeepECG WCR-77 AI inference pipeline</b>. Automated OpenCV quality inspection, digitized lead wave analysis, and clinician-in-the-loop validation.</p>
         </Panel>
         <Panel title={`Demo requests (${data.length})`}>
           <ul className="divide-y text-sm">

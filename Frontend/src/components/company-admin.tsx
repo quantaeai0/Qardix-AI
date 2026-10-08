@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { z } from "zod";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { companiesApi } from "@/lib/api-client";
 import type { Company } from "@/lib/admin-data";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -23,10 +23,14 @@ const schema = z.object({
 export function useSetCompanyStatus() {
   const qc = useQueryClient();
   return async (c: Company) => {
-    const { error } = await supabase.from("companies").update({ status: c.status === "active" ? "inactive" : "active" }).eq("id", c.id);
-    if (error) return void toast.error(error.message);
-    toast.success(`${c.name} ${c.status === "active" ? "deactivated — all its users are now blocked" : "activated"}`);
-    qc.invalidateQueries({ queryKey: ["admin-core"] });
+    try {
+      const nextStatus = c.status === "active" ? "inactive" : "active";
+      await companiesApi.toggleStatus(c.id, nextStatus);
+      toast.success(`${c.name} ${nextStatus === "inactive" ? "deactivated — all its users are now blocked" : "activated"}`);
+      qc.invalidateQueries({ queryKey: ["admin-core"] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to toggle status");
+    }
   };
 }
 
@@ -42,12 +46,20 @@ export function CompanyDialog({ value, onClose }: { value: Partial<Company>; onC
     if (!p.success) return void toast.error(p.error.issues[0]?.message ?? "Invalid input");
     setBusy(true);
     const payload = { ...p.data, code: p.data.code.toUpperCase(), contact_phone: p.data.contact_phone || null, notes: p.data.notes || null };
-    const { error } = value.id ? await supabase.from("companies").update(payload).eq("id", value.id) : await supabase.from("companies").insert(payload);
-    setBusy(false);
-    if (error) return void toast.error(error.message.includes("duplicate") ? "Company code already exists" : error.message);
-    toast.success(value.id ? "Company updated" : "Company created");
-    qc.invalidateQueries({ queryKey: ["admin-core"] });
-    onClose();
+    try {
+      if (value.id) {
+        await companiesApi.toggleStatus(value.id, payload.status);
+      } else {
+        await companiesApi.create(payload);
+      }
+      toast.success(value.id ? "Company updated" : "Company created");
+      qc.invalidateQueries({ queryKey: ["admin-core"] });
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save company");
+    } finally {
+      setBusy(false);
+    }
   }
   const fld = (k: keyof typeof f, label: string, opt = false) => (
     <div className="space-y-1.5"><Label>{label}{!opt && " *"}</Label><Input value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} /></div>

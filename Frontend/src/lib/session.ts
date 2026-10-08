@@ -47,7 +47,7 @@ export async function loadSessionInfo(): Promise<SessionInfo | null> {
 
     const role = user.role as Role;
     const company = user.company_id
-      ? { id: user.company_id, name: user.company_name || "Pharma Partner", code: "PHARMA", status: "active" }
+      ? { id: user.company_id, name: user.company_name || "—", code: "ORG", status: "active" }
       : null;
 
     return {

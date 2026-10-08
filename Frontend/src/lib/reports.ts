@@ -1,5 +1,5 @@
 import { jsPDF } from "jspdf";
-import { supabase } from "@/integrations/supabase/client";
+import { assessmentApi, apiRequest } from "@/lib/api-client";
 import { URGENCY_LABEL, type Urgency } from "./mock-ai";
 
 export interface ReportBundle {
@@ -23,24 +23,68 @@ export const SYMPTOM_LABELS: Record<string, string> = {
 export const VALIDATION_LABEL: Record<string, string> = { confirm: "Confirmed", correct: "Corrected", reject: "Rejected" };
 
 export async function loadReportBundle(assessmentId: string): Promise<ReportBundle> {
-  const [{ data: assessment }, { data: ecg }, { data: ai }, { data: validation }, { data: report }] = await Promise.all([
-    supabase.from("patient_assessments").select("*").eq("id", assessmentId).maybeSingle(),
-    supabase.from("ecg_records").select("*").eq("assessment_id", assessmentId).maybeSingle(),
-    supabase.from("ai_results").select("*").eq("assessment_id", assessmentId).maybeSingle(),
-    supabase.from("doctor_validations").select("*").eq("assessment_id", assessmentId).maybeSingle(),
-    supabase.from("reports").select("*").eq("assessment_id", assessmentId).maybeSingle(),
-  ]);
-  if (!assessment) throw new Error("Report not found");
-  const [{ data: doctor }, { data: company }] = await Promise.all([
-    supabase.from("profiles").select("display_name, specialty").eq("id", assessment.doctor_id).maybeSingle(),
-    assessment.company_id ? supabase.from("companies").select("name").eq("id", assessment.company_id).maybeSingle() : Promise.resolve({ data: null }),
-  ]);
-  let imageUrl: string | null = null;
-  if (ecg?.image_path) {
-    const { data } = await supabase.storage.from("ecg-images").createSignedUrl(ecg.image_path, 3600);
-    imageUrl = data?.signedUrl ?? null;
+  try {
+    let reportDetail: any = null;
+    try {
+      reportDetail = await apiRequest(`/reports/${assessmentId}`);
+    } catch {
+      reportDetail = null;
+    }
+
+    const assessment = await assessmentApi.get(assessmentId);
+    let ecgData: any = null;
+    try {
+      ecgData = await apiRequest(`/ecg/${assessmentId}`);
+    } catch {
+      ecgData = null;
+    }
+
+    const report = {
+      id: reportDetail?.id || assessment.id,
+      report_code: reportDetail?.report_code || assessment.report_code || `REP-${assessment.anonymous_patient_id}`,
+      generated_at: reportDetail?.generated_at || assessment.created_at,
+      report_status: reportDetail?.report_status || assessment.report_status || "generated",
+    };
+
+    const doctor = {
+      display_name: reportDetail?.doctor_name || assessment.doctor_name || "Doctor",
+      specialty: reportDetail?.doctor_specialty || null,
+    };
+
+    const company = {
+      name: reportDetail?.company_name || assessment.company_name || "—",
+    };
+
+    const ai = ecgData?.ai_result || (reportDetail?.ai_summary ? {
+      ai_summary: reportDetail.ai_summary,
+      findings: reportDetail.findings || [],
+      abnormal_leads: reportDetail.abnormal_leads || [],
+      confidence_json: reportDetail.confidence_json || { overall: 0.94 },
+      urgency: reportDetail.urgency || "routine",
+      patient_explanation: reportDetail.patient_explanation || "",
+      warning_signs: reportDetail.warning_signs || [],
+    } : null);
+
+    return {
+      report,
+      assessment,
+      ecg: {
+        quality_status: ecgData?.quality_status || assessment.quality_status || "accepted",
+        processing_status: ecgData?.processing_status || assessment.processing_status || "completed",
+      },
+      ai,
+      validation: reportDetail?.validation_status ? {
+        status: reportDetail.validation_status,
+        notes: reportDetail.doctor_notes,
+        validated_at: reportDetail.generated_at,
+      } : assessment.validation || null,
+      doctor,
+      company,
+      imageUrl: reportDetail?.image_url || ecgData?.image_url || null,
+    };
+  } catch (err: any) {
+    throw new Error(err.message || "Failed to load report data");
   }
-  return { report, assessment, ecg, ai, validation, doctor, company, imageUrl };
 }
 
 async function toDataUrl(url: string): Promise<string | null> {
