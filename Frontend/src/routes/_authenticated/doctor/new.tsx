@@ -63,7 +63,8 @@ function Wizard() {
   const [consent, setConsent] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [quality, setQuality] = useState<"accepted" | "needs_reupload" | null>(null);
+  const [quality, setQuality] = useState<"accepted" | "needs_reupload" | "checking" | null>(null);
+  const [qualityReason, setQualityReason] = useState<string | null>(null);
   const [stage, setStage] = useState(0);
   const [result, setResult] = useState<EcgAnalysisResult | null>(null);
   const [ids, setIds] = useState<{ assessment: string; ai: string } | null>(null);
@@ -92,16 +93,28 @@ function Wizard() {
     if (Object.values(symptoms).some((v) => v === null)) return void toast.error("Answer Yes or No for every symptom");
     setStep(2);
   }
-  function onFile(f: File | undefined) {
+  async function onFile(f: File | undefined) {
     if (!f) return;
     if (!["image/jpeg", "image/png"].includes(f.type)) return void toast.error("Please upload a JPG or PNG image");
     if (f.size > 10 * 1024 * 1024) return void toast.error("Image must be under 10 MB");
     setFile(f);
     setPreview(URL.createObjectURL(f));
-    // Demo-mode quality check: very small images are treated as unreadable.
-    const img = new Image();
-    img.onload = () => setQuality(img.width < 400 || img.height < 250 || f.size < 15 * 1024 ? "needs_reupload" : "accepted");
-    img.src = URL.createObjectURL(f);
+    setQuality("checking");
+    setQualityReason(null);
+
+    try {
+      const res = await assessmentApi.checkQuality(f);
+      setQuality(res.quality_status);
+      setQualityReason(res.quality_reason);
+      if (res.quality_status === "needs_reupload") {
+        toast.warning(res.quality_reason || "Image quality insufficient. Please re-upload.");
+      }
+    } catch (err: any) {
+      console.error("OpenCV quality check error:", err);
+      // Fallback if network or auth error occurs
+      setQuality("accepted");
+      setQualityReason(null);
+    }
   }
 
   async function runAnalysis() {
@@ -129,10 +142,13 @@ function Wizard() {
 
       const ecgResponse = await assessmentApi.uploadECG(assessment.id, file!);
 
-      const ai = ecgResponse.ai_result;
-      if (!ai) {
-        throw new Error(ecgResponse.quality_reason || "ECG processing failed");
+      if (ecgResponse.quality_status === "needs_reupload" || !ecgResponse.ai_result) {
+        setQuality("needs_reupload");
+        setQualityReason(ecgResponse.quality_reason || "Image quality check failed during processing.");
+        throw new Error(ecgResponse.quality_reason || "ECG image quality check failed. Please re-upload.");
       }
+
+      const ai = ecgResponse.ai_result;
 
       const res: EcgAnalysisResult = {
         quality_status: ecgResponse.quality_status,
@@ -319,10 +335,16 @@ function Wizard() {
                     {quality === "accepted" ? (
                       <span className="inline-flex items-center gap-1.5 rounded-full bg-routine/12 px-3 py-1 text-sm font-medium text-routine"><CheckCircle2 className="size-4" /> Quality: Accepted</span>
                     ) : quality === "needs_reupload" ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-urgent/10 px-3 py-1 text-sm font-medium text-urgent"><XCircle className="size-4" /> Needs Re-upload — image too small or unclear</span>
-                    ) : <span className="text-sm text-muted-foreground">Checking quality…</span>}
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-urgent/10 px-3 py-1 text-sm font-medium text-urgent"><XCircle className="size-4" /> Needs Re-upload</span>
+                    ) : <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground"><RefreshCw className="size-3.5 animate-spin" /> Checking quality (OpenCV blur & resolution)…</span>}
                     <Button variant="outline" onClick={() => fileRef.current?.click()}><RefreshCw className="mr-2 size-4" /> Replace Image</Button>
                   </div>
+                  {quality === "needs_reupload" && qualityReason && (
+                    <div className="mt-3 flex items-start gap-2 rounded-lg border border-urgent/20 bg-urgent/5 p-3 text-xs text-urgent">
+                      <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                      <span>{qualityReason}</span>
+                    </div>
+                  )}
                 </div>
               )}
             </Panel>

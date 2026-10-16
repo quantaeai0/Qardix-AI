@@ -39,12 +39,14 @@ URGENT_FINDING_PATTERNS: list[str] = [
 
 REVIEW_SOON_FINDING_PATTERNS: list[str] = [
     "Atrial Fibrillation",
+    "Atrial Tachycardia",
     "ST Depression",
     "T-Wave Inversion",
     "Left Bundle Branch Block",
     "Second Degree AV Block",
     "Left Ventricular Hypertrophy",
     "Wolff-Parkinson-White",
+    "Delta Wave",
     "Sinus Tachycardia",
 ]
 

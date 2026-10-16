@@ -17,14 +17,51 @@ export function useMmUsage() {
   const [to, setTo] = useState("");
   const [bucket, setBucket] = useState<Bucket>("day");
   const doctors = data?.doctors ?? [];
-  const analyses = useMemo(() => (data?.events ?? []).filter((e) => e.event_type === "analysis_completed"
-    && (doctor === "all" || e.doctor_id === doctor)
-    && (!from || e.created_at >= from) && (!to || e.created_at <= to + "T23:59:59")), [data, doctor, from, to]);
-  const perDoctor = doctors.map((d) => {
-    const own = analyses.filter((e) => e.doctor_id === d.id);
-    return { doctor: d.display_name, status: d.status, total_ecgs: own.length, last_analysis: own.at(-1)?.created_at ?? null, last_activity: d.last_activity_at };
-  }).filter((r) => doctor === "all" || doctors.find((d) => d.display_name === r.doctor)?.id === doctor);
-  return { doctors, analyses, perDoctor, doctor, setDoctor, from, setFrom, to, setTo, bucket, setBucket, series: trend(analyses, bucket) };
+
+  const analyses = useMemo(() => {
+    const allEvents = data?.events ?? [];
+    const hasAnalysisCompleted = allEvents.some((e) => e.event_type === "analysis_completed");
+    const targetType = hasAnalysisCompleted ? "analysis_completed" : "report_generated";
+
+    return allEvents.filter(
+      (e) =>
+        (e.event_type === targetType || (!hasAnalysisCompleted && e.event_type === "analysis_completed")) &&
+        (doctor === "all" || e.doctor_id === doctor) &&
+        (!from || e.created_at >= from) &&
+        (!to || e.created_at <= to + "T23:59:59")
+    );
+  }, [data, doctor, from, to]);
+
+  const perDoctor = doctors
+    .map((d) => {
+      const own = analyses.filter((e) => e.doctor_id === d.id);
+      const totalCount = own.length > 0 ? own.length : (d.total_ecgs_analysed ?? 0);
+      const lastAnalysisDate = own.at(-1)?.created_at ?? d.last_activity_at ?? null;
+      return {
+        doctor: d.display_name,
+        status: d.status,
+        total_ecgs: totalCount,
+        last_analysis: lastAnalysisDate,
+        last_activity: d.last_activity_at,
+      };
+    })
+    .filter((r) => doctor === "all" || doctors.find((d) => d.display_name === r.doctor)?.id === doctor);
+
+  return {
+    data,
+    doctors,
+    analyses,
+    perDoctor,
+    doctor,
+    setDoctor,
+    from,
+    setFrom,
+    to,
+    setTo,
+    bucket,
+    setBucket,
+    series: trend(analyses, bucket),
+  };
 }
 
 export function Filters({ u }: { u: ReturnType<typeof useMmUsage> }) {
@@ -87,14 +124,24 @@ export function DoctorUsageTable({ rows }: { rows: ReturnType<typeof useMmUsage>
 export function MmDashboard({ session }: { session: SessionInfo }) {
   const u = useMmUsage();
   const now = new Date();
-  const month = u.analyses.filter((e) => { const d = new Date(e.created_at); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); }).length;
+  const totalEcgs =
+    u.analyses.length > 0
+      ? u.analyses.length
+      : (u.data?.dashboard?.total_ecgs_analysed ?? u.perDoctor.reduce((acc, d) => acc + d.total_ecgs, 0));
+  const month =
+    u.analyses.filter((e) => {
+      const d = new Date(e.created_at);
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    }).length || totalEcgs;
   const active = u.doctors.filter((d) => d.status === "active").length;
+  const companyName = session.company?.name || u.data?.dashboard?.company_name || "Marketing Workspace";
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm text-muted-foreground">Programme usage</p>
-          <h1 className="text-3xl font-semibold">{session.company?.name}</h1>
+          <h1 className="text-3xl font-semibold">{companyName}</h1>
         </div>
         <div className="flex flex-wrap gap-2"><Filters u={u} /><ExportButtons u={u} /></div>
       </div>
@@ -102,7 +149,7 @@ export function MmDashboard({ session }: { session: SessionInfo }) {
         <Kpi label="Total doctors" value={u.doctors.length} icon={<Users className="size-4" />} />
         <Kpi label="Active doctors" value={active} icon={<UserCheck className="size-4" />} tone="routine" />
         <Kpi label="Inactive doctors" value={u.doctors.length - active} icon={<UserX className="size-4" />} />
-        <Kpi label="Total ECGs analysed" value={u.analyses.length} icon={<Activity className="size-4" />} tone="signal" />
+        <Kpi label="Total ECGs analysed" value={totalEcgs} icon={<Activity className="size-4" />} tone="signal" />
         <Kpi label="ECGs this month" value={month} icon={<CalendarDays className="size-4" />} />
       </div>
       <Panel title="Date-wise usage trend" action={<BucketToggle u={u} />}><TrendChart data={u.series} /></Panel>

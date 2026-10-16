@@ -108,6 +108,27 @@ export const assessmentApi = {
 
   get: (id: string) => apiRequest(`/assessments/${id}`),
 
+  checkQuality: async (file: File): Promise<{ quality_status: "accepted" | "needs_reupload"; quality_reason: string | null }> => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const token = localStorage.getItem("qardix_access_token");
+    const response = await fetch(`${API_BASE_URL}/ecg/quality-check`, {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: "Quality check failed" }));
+      throw new Error(err.detail || "Quality check failed");
+    }
+
+    return response.json();
+  },
+
   uploadECG: async (assessment_id: string, file: File) => {
     const formData = new FormData();
     formData.append("assessment_id", assessment_id);

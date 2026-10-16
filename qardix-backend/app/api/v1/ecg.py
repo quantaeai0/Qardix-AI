@@ -21,13 +21,39 @@ from sqlalchemy.orm import selectinload
 from uuid import UUID
 
 from app.database.connection import get_db
-from app.models.models import PatientAssessment, EcgRecord, AiResult, User, ProcessingStatus, AppRole
+from app.models.models import PatientAssessment, EcgRecord, AiResult, User, ProcessingStatus, AppRole, UsageEvent
 from app.services.storage import storage_service
+from app.services.quality_check import perform_ecg_quality_check
 from app.ai.pipeline import ECGPipeline
 from app.ai.schema import QualityStatus, PipelineError
 from app.auth.dependencies import require_doctor, get_current_user
 
 router = APIRouter(prefix="/ecg", tags=["ECG Processing & AI"])
+
+
+@router.post("/quality-check")
+async def check_ecg_quality(
+    file: UploadFile = File(...),
+    doctor: User = Depends(require_doctor),
+):
+    """
+    Real-time OpenCV quality gate pre-check.
+    Evaluates image decodability, resolution, and Laplacian blur score.
+    Returns:
+        {
+            "quality_status": "accepted" | "needs_reupload",
+            "quality_reason": str | None
+        }
+    """
+    image_bytes = await file.read()
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    quality_status, quality_reason = perform_ecg_quality_check(image_bytes)
+    return {
+        "quality_status": quality_status,
+        "quality_reason": quality_reason,
+    }
 
 
 @router.post("/upload")
@@ -158,6 +184,16 @@ async def upload_and_process_ecg(
         raw_output_json=ai_result_data.raw_output_json,
     )
     db.add(ai_record)
+
+    # Record analytics usage event for MM dashboard
+    usage_event = UsageEvent(
+        company_id=doctor.company_id,
+        doctor_id=doctor.id,
+        event_type="analysis_completed",
+        analysis_status=processing_status.value,
+    )
+    db.add(usage_event)
+
     await db.commit()
     await db.refresh(ai_record)
 

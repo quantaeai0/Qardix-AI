@@ -8,21 +8,32 @@ export interface MmDoctor {
   specialty: string | null;
   status: string;
   last_activity_at: string | null;
+  total_ecgs_analysed: number;
 }
 
 export interface UsageEvent {
   id: string;
   doctor_id: string;
   event_type: string;
+  analysis_status?: string | null;
   created_at: string;
+}
+
+export interface MmDashboardKpis {
+  company_name?: string | null;
+  total_doctors: number;
+  active_doctors: number;
+  inactive_doctors: number;
+  total_ecgs_analysed: number;
 }
 
 export const mmQuery = queryOptions({
   queryKey: ["mm-usage"],
   queryFn: async () => {
     try {
-      const [doctors, events] = await Promise.all([
-        analyticsApi.getDoctorUsage(),
+      const [dashboard, doctors, events] = await Promise.all([
+        analyticsApi.getDashboard().catch(() => null),
+        analyticsApi.getDoctorUsage().catch(() => []),
         analyticsApi.getEvents().catch(() => []),
       ]);
       const formattedDocs = (doctors || []).map((d: any) => ({
@@ -32,12 +43,17 @@ export const mmQuery = queryOptions({
         specialty: d.specialty,
         status: d.status,
         last_activity_at: d.last_activity_at,
+        total_ecgs_analysed: d.total_ecgs_analysed ?? 0,
       })) as MmDoctor[];
 
-      return { doctors: formattedDocs, events: (events || []) as UsageEvent[] };
+      return {
+        dashboard: dashboard as MmDashboardKpis | null,
+        doctors: formattedDocs,
+        events: (events || []) as UsageEvent[],
+      };
     } catch (err) {
       console.error("Failed to load MM query from FastAPI:", err);
-      return { doctors: [], events: [] as UsageEvent[] };
+      return { dashboard: null, doctors: [], events: [] as UsageEvent[] };
     }
   },
 });

@@ -21,10 +21,10 @@ Test scenarios covered:
 """
 
 import asyncio
-import io
 import os
 import sys
 import pytest
+from unittest.mock import patch, AsyncMock
 
 # Ensure project root is on path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -35,7 +35,7 @@ import cv2
 
 from app.ai.schema import (
     UrgencyLevel, QualityStatus, ModelInput, RawPrediction,
-    DigitizerOutput, NormalisedPrediction, Finding,
+    DigitizerOutput, NormalisedPrediction, Finding, PipelineError,
 )
 from app.ai.pipeline import ECGPipeline
 from app.ai.providers.mock_provider import MockInferenceProvider
@@ -45,7 +45,7 @@ from app.ai.postprocessing.explanation_generator import (
     generate_patient_explanation, build_ai_summary,
 )
 from app.ai.preprocessing.image_processor import validate_image, preprocess_ecg_image
-from app.ai.preprocessing.digitiser import validate_waveform, DigitizerOutput
+from app.ai.preprocessing.digitiser import digitise_ecg, validate_waveform
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -392,3 +392,128 @@ class TestPipelineIntegration:
         )
         assert r1.quality_status == r2.quality_status
         assert r1.urgency == r2.urgency
+
+
+class TestQualityCheckGate:
+    """Tests for OpenCV quality check logic and the real-time quality gate."""
+
+    def test_sharp_image_passes_quality_check(self):
+        from app.services.quality_check import perform_ecg_quality_check
+        img_bytes = _make_ecg_image(width=800, height=600, blur=False)
+        status, reason = perform_ecg_quality_check(img_bytes)
+        assert status == "accepted"
+        assert reason is None
+
+    def test_blurry_image_fails_with_reason(self):
+        from app.services.quality_check import perform_ecg_quality_check
+        img_bytes = _make_ecg_image(width=800, height=600, blur=True)
+        status, reason = perform_ecg_quality_check(img_bytes)
+        assert status == "needs_reupload"
+        assert "blurry" in reason.lower()
+
+    def test_small_resolution_fails_quality_check(self):
+        from app.services.quality_check import perform_ecg_quality_check
+        img_bytes = _make_ecg_image(width=200, height=200, blur=False)
+        status, reason = perform_ecg_quality_check(img_bytes)
+        assert status == "needs_reupload"
+        assert "resolution too low" in reason.lower()
+
+    def test_quality_check_endpoint_contract(self):
+        """Verifies check_ecg_quality async endpoint handler."""
+        from unittest.mock import MagicMock
+        from app.api.v1.ecg import check_ecg_quality
+        from app.models.models import User, AppRole
+
+        img_bytes = _make_ecg_image(width=800, height=600, blur=False)
+        mock_file = MagicMock()
+        mock_file.read = AsyncMock(return_value=img_bytes)
+
+        doctor = MagicMock(spec=User)
+        doctor.role = AppRole.doctor
+
+        res = asyncio.get_event_loop().run_until_complete(
+            check_ecg_quality(file=mock_file, doctor=doctor)
+        )
+        assert res["quality_status"] == "accepted"
+        assert res["quality_reason"] is None
+
+
+class TestColabUnifiedPipeline:
+    """Tests for unified Colab image upload inference and postprocessing."""
+
+    def test_colab_provider_parses_top_predictions(self):
+        """Verifies ColabInferenceProvider accurately maps top_predictions."""
+        from app.ai.providers.colab_provider import ColabInferenceProvider
+        import httpx
+
+        sample_colab_response = {
+            "status": "success",
+            "filename": "test 2.webp",
+            "detected_image_layout": ["II", "aVR", "aVL", "V1", "V2", "V4", "V5", "V6"],
+            "top_predictions": [
+                {"class": "Delta wave", "probability": 0.6575},
+                {"class": "Atrial tachycardia (>= 100 BPM)", "probability": 0.5882},
+            ],
+        }
+
+        mock_resp = httpx.Response(200, json=sample_colab_response)
+
+        with patch("app.ai.providers.colab_provider.settings") as mock_settings:
+            mock_settings.COLAB_INFERENCE_URL = "https://test-localtunnel.loca.lt"
+            mock_settings.COLAB_API_KEY = "test-key"
+
+            with patch("httpx.AsyncClient") as mock_client:
+                mock_inst = mock_client.return_value.__aenter__.return_value
+                mock_inst.post = AsyncMock(return_value=mock_resp)
+
+                provider = ColabInferenceProvider()
+                raw = asyncio.get_event_loop().run_until_complete(
+                    provider.predict_image(b"fake-bytes", "test.png")
+                )
+
+                assert raw.inference_provider == "colab"
+                assert "Delta wave" in raw.logits
+                assert raw.logits["Delta wave"] == 0.6575
+                assert "Atrial tachycardia (>= 100 BPM)" in raw.logits
+                assert len(raw.top_findings) == 2
+
+    def test_pipeline_runs_colab_provider_end_to_end(self):
+        """Verifies the whole pipeline processes Colab top_predictions into triage results."""
+        from app.ai.providers.colab_provider import ColabInferenceProvider
+        import httpx
+
+        sample_colab_response = {
+            "status": "success",
+            "filename": "ecg.png",
+            "detected_image_layout": ["II", "aVR", "aVL", "V1", "V2"],
+            "top_predictions": [
+                {"class": "Delta wave", "probability": 0.6575},
+                {"class": "Atrial tachycardia (>= 100 BPM)", "probability": 0.5882},
+            ],
+        }
+
+        mock_resp = httpx.Response(200, json=sample_colab_response)
+
+        with patch("app.ai.providers.colab_provider.settings") as mock_settings:
+            mock_settings.COLAB_INFERENCE_URL = "https://test-localtunnel.loca.lt"
+            mock_settings.COLAB_API_KEY = "test-key"
+
+            with patch("httpx.AsyncClient") as mock_client:
+                mock_inst = mock_client.return_value.__aenter__.return_value
+                mock_inst.post = AsyncMock(return_value=mock_resp)
+
+                provider = ColabInferenceProvider()
+                pipeline = ECGPipeline(provider=provider)
+                pipeline._backend = "colab"
+
+                img_bytes = _make_ecg_image(blur=False)
+                result = asyncio.get_event_loop().run_until_complete(
+                    pipeline.run(img_bytes, "ecg.png", NORMAL_CLINICAL_CONTEXT)
+                )
+
+                assert result.quality_status == QualityStatus.ACCEPTED
+                assert result.urgency == UrgencyLevel.REVIEW_SOON
+                assert len(result.findings) >= 2
+                assert any("Delta Wave" in f.label for f in result.findings)
+                assert result.inference_provider == "colab"
+                assert result.patient_explanation is not None

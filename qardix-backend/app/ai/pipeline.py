@@ -91,7 +91,12 @@ class ECGPipeline:
 
     def __init__(self, provider: Optional[ModelInferenceProvider] = None):
         self.provider = provider or get_inference_provider()
-        logger.info(f"ECGPipeline initialised with provider: {self.provider}")
+        # The digitiser backend matches the inference backend — same .env switch
+        from app.config import settings
+        self._backend = settings.INFERENCE_BACKEND.strip().lower()
+        logger.info(
+            f"ECGPipeline initialised | provider={self.provider} | backend={self._backend}"
+        )
 
     async def run(
         self,
@@ -137,34 +142,46 @@ class ECGPipeline:
             logger.info(f"Quality check failed: {quality_reason}")
             return _quality_failed_result(quality_reason)
 
-        # ── Stage 3: Image Preprocessing ─────────────────────────────────────
-        logger.debug("Stage 3: Preprocessing")
-        preprocessed = preprocess_ecg_image(image_bytes)
+        # ── Stages 3–7: Inference (Direct Colab vs. Local/Mock Pipeline) ─────
+        if self._backend == "colab" and hasattr(self.provider, "predict_image"):
+            logger.info("Stages 3–7: Delegating end-to-end digitisation + inference to Colab")
+            raw_prediction = await self.provider.predict_image(
+                image_bytes=image_bytes,
+                filename=filename,
+            )
+            digitiser_version = raw_prediction.raw_output.get(
+                "digitiser_version", "colab-unified-pipeline"
+            )
+        else:
+            # ── Stage 3: Image Preprocessing ─────────────────────────────────
+            logger.debug("Stage 3: Preprocessing")
+            preprocessed = preprocess_ecg_image(image_bytes)
 
-        # ── Stage 4: ECG Digitisation ─────────────────────────────────────────
-        logger.debug("Stage 4: Digitisation")
-        digitiser_output = digitise_ecg(preprocessed)
+            # ── Stage 4: ECG Digitisation ─────────────────────────────────────
+            logger.debug(f"Stage 4: Digitisation (backend={self._backend})")
+            digitiser_output = await digitise_ecg(preprocessed, backend=self._backend)
+            digitiser_version = digitiser_output.digitiser_version
 
-        # ── Stage 5: Waveform Validation ──────────────────────────────────────
-        logger.debug("Stage 5: Waveform validation")
-        waveform_check = validate_waveform(digitiser_output)
-        if not waveform_check.is_valid:
-            raise PipelineError(
-                stage="WaveformValidation",
-                reason=waveform_check.reason or "Waveform validation failed.",
+            # ── Stage 5: Waveform Validation ──────────────────────────────────
+            logger.debug("Stage 5: Waveform validation")
+            waveform_check = validate_waveform(digitiser_output)
+            if not waveform_check.is_valid:
+                raise PipelineError(
+                    stage="WaveformValidation",
+                    reason=waveform_check.reason or "Waveform validation failed.",
+                )
+
+            # ── Stage 6: Model Input Preparation ─────────────────────────────
+            logger.debug("Stage 6: Model input preparation")
+            model_input = prepare_model_input(
+                digitiser_output,
+                clinical_context,
+                model_adapter=model_adapter,
             )
 
-        # ── Stage 6: Model Input Preparation ─────────────────────────────────
-        logger.debug("Stage 6: Model input preparation")
-        model_input = prepare_model_input(
-            digitiser_output,
-            clinical_context,
-            model_adapter=model_adapter,
-        )
-
-        # ── Stage 7: Model Inference (provider-agnostic) ──────────────────────
-        logger.info(f"Stage 7: Model inference via {self.provider.provider_name}")
-        raw_prediction = await self.provider.predict(model_input)
+            # ── Stage 7: Model Inference (provider-agnostic) ──────────────────
+            logger.info(f"Stage 7: Model inference via {self.provider.provider_name}")
+            raw_prediction = await self.provider.predict(model_input)
 
         # ── Stage 8: Prediction Normalisation ────────────────────────────────
         logger.debug("Stage 8: Prediction normalisation")
@@ -207,7 +224,7 @@ class ECGPipeline:
                 "model_version": raw_prediction.model_version,
                 "inference_provider": raw_prediction.inference_provider,
                 "urgency_rules": urgency_result.triggered_rules,
-                "digitiser_version": digitiser_output.digitiser_version,
+                "digitiser_version": digitiser_version,
             },
             model_version=raw_prediction.model_version,
             inference_provider=raw_prediction.inference_provider,

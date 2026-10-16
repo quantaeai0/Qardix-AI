@@ -58,5 +58,12 @@ class ModelInferenceProvider(ABC):
         """
         ...
 
+    async def predict_image(self, image_bytes: bytes, filename: str = "ecg.png") -> RawPrediction:
+        """
+        Run end-to-end model inference directly on image bytes.
+        Supported by providers with unified image endpoints (e.g. Colab).
+        """
+        raise NotImplementedError(f"{self.provider_name} does not support direct image prediction.")
+
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} provider={self.provider_name}>"

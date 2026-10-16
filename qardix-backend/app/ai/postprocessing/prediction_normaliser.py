@@ -77,6 +77,16 @@ FINDING_MAP: dict[str, dict] = {
         "detail": "Increased QRS voltage meeting voltage criteria for LVH.",
         "leads": ["V5", "V6", "aVL"],
     },
+    "Delta wave": {
+        "label": "Delta Wave (Pre-excitation / WPW Pattern)",
+        "detail": "Slurred upstroke in QRS complex indicating ventricular pre-excitation.",
+        "leads": ["I", "aVL", "V4", "V5", "V6"],
+    },
+    "Atrial tachycardia (>= 100 BPM)": {
+        "label": "Atrial Tachycardia (≥ 100 BPM)",
+        "detail": "Rapid regular atrial rate ≥ 100 bpm originating outside the SA node.",
+        "leads": ["II", "III", "aVF", "V1"],
+    },
 }
 
 
@@ -105,11 +115,11 @@ def normalise_prediction(raw: RawPrediction) -> NormalisedPrediction:
             if class_label != "Normal_sinus_rhythm":
                 abnormal_leads.update(cfg["leads"])
         else:
-            # Unknown class above threshold — report generically
+            # Unknown or unmapped class above threshold
+            clean_label = class_label.replace("_", " ").strip()
             finding = Finding(
-                label=f"ECG Abnormality ({class_label})",
-                detail=f"Automated finding with probability {probability:.2f}. "
-                       f"Doctor review required.",
+                label=clean_label,
+                detail=f"Automated AI finding with probability {probability:.1%}. Doctor review required.",
                 probability=round(probability, 3),
                 affected_leads=[],
             )
