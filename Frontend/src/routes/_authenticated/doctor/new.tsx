@@ -155,11 +155,12 @@ function Wizard() {
         model_version: ai.model_version || "DeepECG WCR-77 v2.4",
         ai_summary: ai.ai_summary,
         findings: ai.findings || [],
-        confidence: ai.confidence_json?.overall || 0.92,
+        confidence: ai.confidence_json?.overall ?? 0,
         abnormal_leads: ai.abnormal_leads || [],
         urgency: ai.urgency,
         patient_explanation: ai.patient_explanation,
         warning_signs: ai.warning_signs || [],
+        clinical_report: ai.clinical_report ?? null,
       };
 
       setIds({ assessment: assessment.id, ai: ai.id });
@@ -390,6 +391,55 @@ function Wizard() {
           <div className="grid gap-6 lg:grid-cols-2">
             <Panel title={<span className="flex items-center gap-2"><Tag>Doctor</Tag> AI ECG Summary</span>} className="lg:col-span-2">
               <p className="text-lg font-semibold">{result.ai_summary}</p>
+              {result.clinical_report?.diagnostic_pills?.length ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {result.clinical_report.diagnostic_pills.map((p, idx) => (
+                    <span
+                      key={idx}
+                      className={cn(
+                        "rounded-full px-3 py-1 text-xs font-semibold border",
+                        p.tone === "urgent"
+                          ? "bg-urgent/10 text-urgent border-urgent/20"
+                          : p.tone === "warning"
+                          ? "bg-soon/12 text-soon border-soon/20"
+                          : "bg-routine/12 text-routine border-routine/20"
+                      )}
+                    >
+                      {p.label}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+
+              {result.clinical_report?.quantitative_metrics ? (
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                  <div className="rounded-xl border bg-card p-2.5 text-center">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Heart Rate</p>
+                    <p className="mt-0.5 text-sm font-bold">{result.clinical_report.quantitative_metrics.heart_rate_bpm} bpm</p>
+                  </div>
+                  <div className="rounded-xl border bg-card p-2.5 text-center">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">PR Interval</p>
+                    <p className="mt-0.5 text-sm font-bold">{result.clinical_report.quantitative_metrics.pr_interval_ms} ms</p>
+                  </div>
+                  <div className="rounded-xl border bg-card p-2.5 text-center">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">QRS Duration</p>
+                    <p className="mt-0.5 text-sm font-bold">{result.clinical_report.quantitative_metrics.qrs_duration_ms} ms</p>
+                  </div>
+                  <div className="rounded-xl border bg-card p-2.5 text-center">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">QT / QTc</p>
+                    <p className="mt-0.5 text-sm font-bold">{result.clinical_report.quantitative_metrics.qt_ms} / {result.clinical_report.quantitative_metrics.qtc_ms} ms</p>
+                  </div>
+                  <div className="rounded-xl border bg-card p-2.5 text-center">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Axis</p>
+                    <p className="mt-0.5 text-sm font-bold">{result.clinical_report.quantitative_metrics.electrical_axis_deg}</p>
+                  </div>
+                  <div className="rounded-xl border bg-card p-2.5 text-center">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">ECG Quality</p>
+                    <p className="mt-0.5 text-sm font-bold">{result.clinical_report.quantitative_metrics.ecg_quality_text}</p>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {result.findings.map((f) => (
                   <div key={f.label} className="rounded-xl border bg-background p-3">
@@ -423,7 +473,17 @@ function Wizard() {
               <p className="mt-3 text-xs text-muted-foreground">Presented to the patient as safety guidance after your review.</p>
             </Panel>
           </div>
-          <Nav onNext={() => setStep(5)} nextLabel="Proceed to Doctor Validation" />
+          <Nav onNext={async () => {
+            setStep(5);
+            if (ids?.assessment) {
+              try {
+                const refreshed = await assessmentApi.getECG(ids.assessment);
+                if (refreshed?.ai_result?.clinical_report) {
+                  setResult((prev) => prev ? { ...prev, clinical_report: refreshed.ai_result.clinical_report } : null);
+                }
+              } catch {}
+            }
+          }} nextLabel="Proceed to Doctor Validation" />
         </div>
       )}
 
@@ -459,7 +519,16 @@ function Wizard() {
       {step === 6 && bundle && (
         <div className="space-y-6">
           <div className="no-print flex flex-wrap gap-2">
-            <Button onClick={() => downloadReportPdf(bundle)}><Download className="mr-2 size-4" /> Download PDF</Button>
+            <Button onClick={async () => {
+              try {
+                toast.loading("Preparing report PDF...", { id: "pdf-gen" });
+                await downloadReportPdf(bundle);
+                toast.success("Report PDF downloaded successfully", { id: "pdf-gen" });
+              } catch (err: any) {
+                console.error("PDF download failed:", err);
+                toast.error("Failed to download PDF: " + (err.message || String(err)), { id: "pdf-gen" });
+              }
+            }}><Download className="mr-2 size-4" /> Download PDF</Button>
             <Button variant="outline" onClick={() => window.print()}><Printer className="mr-2 size-4" /> Print</Button>
             <Button variant="outline" asChild><Link to="/doctor"><ArrowLeft className="mr-2 size-4" /> Back to Dashboard</Link></Button>
             <Button variant="outline" onClick={() => navigate({ to: "/doctor/new", reloadDocument: true })}>Start New Assessment</Button>

@@ -14,13 +14,15 @@ Clinical safety:
   - MM is blocked from accessing ECG images and AI findings.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+import asyncio
+import logging
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 from uuid import UUID
 
-from app.database.connection import get_db
+from app.database.connection import get_db, AsyncSessionLocal
 from app.models.models import PatientAssessment, EcgRecord, AiResult, User, ProcessingStatus, AppRole, UsageEvent
 from app.services.storage import storage_service
 from app.services.quality_check import perform_ecg_quality_check
@@ -28,7 +30,85 @@ from app.ai.pipeline import ECGPipeline
 from app.ai.schema import QualityStatus, PipelineError
 from app.auth.dependencies import require_doctor, get_current_user
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ecg", tags=["ECG Processing & AI"])
+
+
+async def _enrich_clinical_report_bg(
+    ai_result_id: UUID,
+    findings_data: list,
+    urgency_level: str,
+    urgency_rules: list,
+    overall_confidence: float,
+    abnormal_leads: list,
+    model_name: str,
+    model_version: str,
+    inference_provider: str,
+    clinical_context: dict,
+) -> None:
+    """
+    Background task — runs AFTER the HTTP response is already sent to the frontend.
+    Calls Groq to generate a richer clinical_report and patches it in the DB.
+    Safe no-op if Groq fails, times out, or key is missing.
+    """
+    try:
+        from app.ai.llm.clinical_reasoning import generate_clinical_intelligence_report
+        from app.ai.schema import NormalisedPrediction, Finding, UrgencyResult, UrgencyLevel
+        from app.config import settings
+
+        if not settings.GROQ_API_KEY or settings.GROQ_API_KEY in ("", "PASTE_YOUR_GROQ_API_KEY_HERE"):
+            return  # No key — deterministic fallback already saved, nothing to do
+
+        findings = [
+            Finding(
+                label=f["label"], detail=f.get("detail", ""),
+                probability=f["probability"], affected_leads=f.get("affected_leads", []),
+            )
+            for f in findings_data
+        ]
+        normalised = NormalisedPrediction(
+            findings=findings,
+            abnormal_leads=abnormal_leads,
+            overall_confidence=overall_confidence,
+            model_name=model_name,
+            model_version=model_version,
+            inference_provider=inference_provider,
+        )
+        level_map = {
+            "urgent": UrgencyLevel.URGENT,
+            "review_soon": UrgencyLevel.REVIEW_SOON,
+            "routine": UrgencyLevel.ROUTINE,
+        }
+        urgency = UrgencyResult(
+            level=level_map.get(urgency_level, UrgencyLevel.ROUTINE),
+            triggered_rules=urgency_rules,
+        )
+
+        groq_report = await asyncio.wait_for(
+            generate_clinical_intelligence_report(normalised, urgency, clinical_context),
+            timeout=18.0,
+        )
+
+        if groq_report.get("generated_by") != "groq":
+            return  # Groq didn't fire — deterministic result already in DB
+
+        # Patch the DB record with the Groq-enriched clinical_report
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(AiResult).where(AiResult.id == ai_result_id)
+            )
+            ai_rec = result.scalar_one_or_none()
+            if ai_rec and ai_rec.raw_output_json:
+                patched = dict(ai_rec.raw_output_json)
+                patched["clinical_report"] = groq_report
+                ai_rec.raw_output_json = patched
+                await session.commit()
+                logger.info(f"Groq background enrichment saved for ai_result={ai_result_id}")
+
+    except asyncio.TimeoutError:
+        logger.warning(f"Groq background task timed out for ai_result={ai_result_id}")
+    except Exception as exc:
+        logger.warning(f"Groq background task failed for ai_result={ai_result_id}: {exc}")
 
 
 @router.post("/quality-check")
@@ -60,6 +140,7 @@ async def check_ecg_quality(
 async def upload_and_process_ecg(
     assessment_id: UUID = Form(...),
     file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     db: AsyncSession = Depends(get_db),
     doctor: User = Depends(require_doctor),
 ):
@@ -115,6 +196,7 @@ async def upload_and_process_ecg(
             image_bytes=image_bytes,
             filename=file.filename or "ecg.png",
             clinical_context=clinical_context,
+            deterministic_only=True,
         )
     except PipelineError as exc:
         raise HTTPException(
@@ -197,23 +279,46 @@ async def upload_and_process_ecg(
     await db.commit()
     await db.refresh(ai_record)
 
+    # ── Schedule Groq enrichment in background (non-blocking) ─────────────────
+    # The deterministic clinical_report is already saved above.
+    # Groq will patch it asynchronously after the response is sent.
+    background_tasks.add_task(
+        _enrich_clinical_report_bg,
+        ai_result_id=ai_record.id,
+        findings_data=[
+            {"label": f.label, "detail": f.detail, "probability": f.probability,
+             "affected_leads": f.affected_leads}
+            for f in ai_result_data.findings
+        ],
+        urgency_level=ai_result_data.urgency.value,
+        urgency_rules=ai_result_data.raw_output_json.get("urgency_rules", []),
+        overall_confidence=ai_result_data.confidence_json.get("overall", 0.5),
+        abnormal_leads=ai_result_data.abnormal_leads,
+        model_name=ai_result_data.raw_output_json.get("model_name", "deepecg"),
+        model_version=ai_result_data.model_version,
+        inference_provider=ai_result_data.inference_provider,
+        clinical_context=clinical_context,
+    )
+    logger.info(f"Groq enrichment scheduled in background for ai_result={ai_record.id}")
+
     return {
         "ecg_record_id": str(ecg_record.id),
         "quality_status": ai_result_data.quality_status.value,
         "quality_reason": None,
         "image_url": storage_service.get_public_url(storage_path),
         "ai_result": {
-            "id":                 str(ai_record.id),
-            "ai_summary":         ai_record.ai_summary,
-            "findings":           ai_record.findings,
-            "confidence_json":    ai_record.confidence_json,
-            "abnormal_leads":     ai_record.abnormal_leads,
-            "urgency":            ai_record.urgency,
-            "patient_explanation":ai_record.patient_explanation,
-            "warning_signs":      ai_record.warning_signs,
-            "inference_provider": ai_result_data.inference_provider,
-            "model_version":      ai_result_data.model_version,
-            "clinical_disclaimer":ai_result_data.clinical_disclaimer,
+            "id":                  str(ai_record.id),
+            "ai_summary":          ai_record.ai_summary,
+            "findings":            ai_record.findings,
+            "confidence_json":     ai_record.confidence_json,
+            "abnormal_leads":      ai_record.abnormal_leads,
+            "urgency":             ai_record.urgency,
+            "patient_explanation": ai_record.patient_explanation,
+            "warning_signs":       ai_record.warning_signs,
+            "inference_provider":  ai_result_data.inference_provider,
+            "model_version":       ai_result_data.model_version,
+            "clinical_disclaimer": ai_result_data.clinical_disclaimer,
+            "clinical_report":     ai_result_data.raw_output_json.get("clinical_report"),
         },
     }
 
@@ -256,5 +361,6 @@ async def get_ecg_and_ai_result(
             "urgency":             ecg.ai_result.urgency,
             "patient_explanation": ecg.ai_result.patient_explanation,
             "warning_signs":       ecg.ai_result.warning_signs,
+            "clinical_report":     (ecg.ai_result.raw_output_json or {}).get("clinical_report"),
         } if ecg.ai_result else None,
     }

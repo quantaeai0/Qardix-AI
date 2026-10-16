@@ -45,10 +45,13 @@ COMPLETE FLOW (all stages local except model inference):
    11. AI Summary                [explanation_generator.build_ai_summary]
          │
          ▼
-    ECGAIResult (returned to API layer)
+   12. Groq Clinical Reasoning   [clinical_reasoning.generate_clinical_intelligence_report]
+         │  (Groq LLM → full 2-page report payload; deterministic fallback if unavailable)
+         ▼
+     ECGAIResult (returned to API layer)
 
 To switch inference backend: change INFERENCE_BACKEND in .env.
-No other code changes required.
+To enable Groq LLM enrichment: set GROQ_API_KEY in .env.
 """
 
 from __future__ import annotations
@@ -71,6 +74,7 @@ from app.ai.postprocessing.explanation_generator import (
     generate_patient_explanation,
     build_ai_summary,
 )
+from app.ai.llm.clinical_reasoning import generate_clinical_intelligence_report
 from app.ai.providers.base import ModelInferenceProvider
 from app.ai.providers.factory import get_inference_provider
 from app.services.quality_check import perform_ecg_quality_check
@@ -104,6 +108,7 @@ class ECGPipeline:
         filename: str,
         clinical_context: Dict[str, Any],
         model_adapter: str = "deepecg_wcr77",
+        deterministic_only: bool = False,
     ) -> ECGAIResult:
         """
         Execute the full pipeline.
@@ -199,10 +204,28 @@ class ECGPipeline:
         logger.debug("Stage 11: AI summary")
         ai_summary = build_ai_summary(normalised)
 
+        # ── Stage 12: Groq Clinical Intelligence Report ────────────────────────
+        logger.debug("Stage 12: Groq clinical reasoning")
+        clinical_report = await generate_clinical_intelligence_report(
+            normalised=normalised,
+            urgency=urgency_result,
+            clinical_context=clinical_context,
+            prior_ecg=None,  # Future: pass historical ECG notes if available
+            deterministic_only=deterministic_only,
+        )
+        # LLM may return richer patient explanation — prefer it
+        final_explanation = (
+            clinical_report.get("patient_explanation") or patient_explanation.text
+        )
+        final_warning_signs = (
+            clinical_report.get("warning_signs") or patient_explanation.warning_signs
+        )
+
         logger.info(
             f"Pipeline complete | urgency={urgency_result.level.value} "
             f"| provider={raw_prediction.inference_provider} "
-            f"| findings={len(normalised.findings)}"
+            f"| findings={len(normalised.findings)} "
+            f"| report_source={clinical_report.get('generated_by', 'groq')}"
         )
 
         return ECGAIResult(
@@ -214,8 +237,8 @@ class ECGPipeline:
             },
             abnormal_leads=normalised.abnormal_leads,
             urgency=urgency_result.level,
-            patient_explanation=patient_explanation.text,
-            warning_signs=patient_explanation.warning_signs,
+            patient_explanation=final_explanation,
+            warning_signs=final_warning_signs,
             quality_status=QualityStatus.ACCEPTED,
             quality_reason=None,
             raw_output_json={
@@ -225,10 +248,12 @@ class ECGPipeline:
                 "inference_provider": raw_prediction.inference_provider,
                 "urgency_rules": urgency_result.triggered_rules,
                 "digitiser_version": digitiser_version,
+                "clinical_report": clinical_report,
             },
             model_version=raw_prediction.model_version,
             inference_provider=raw_prediction.inference_provider,
         )
+
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

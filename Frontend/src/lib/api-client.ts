@@ -156,7 +156,10 @@ export const assessmentApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+
+  getECG: (assessment_id: string) => apiRequest(`/ecg/${assessment_id}`),
 };
+
 
 // ── Analytics API ──
 export const analyticsApi = {

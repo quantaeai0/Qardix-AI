@@ -1,16 +1,29 @@
-from fastapi import FastAPI
+import logging
+import sys
+import time
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from uvicorn.logging import DefaultFormatter
 
 from app.config import settings
 from app.database.connection import engine
 from app.api.v1.router import api_v1_router
 
+# ── Terminal Logging Configuration ────────────────────────────────────────────
+# Explicitly attach a StreamHandler to the 'app' hierarchy with Uvicorn's formatter
+app_logger = logging.getLogger("app")
+app_logger.setLevel(logging.INFO)
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setFormatter(DefaultFormatter("%(levelprefix)s [%(name)s] %(message)s"))
+app_logger.handlers = [console_handler]
+app_logger.propagate = False
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Tables are managed by Alembic migrations (run: alembic upgrade head).
-    # create_all is intentionally removed — Alembic is the single source of truth.
+    app_logger.info("Qardix AI Backend initialized — terminal logging is ACTIVE.")
     yield
     # Shutdown: release connection pool
     await engine.dispose()
@@ -22,6 +35,16 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Request logging middleware — guarantees every endpoint hit shows in terminal
+@app.middleware("http")
+async def log_requests_middleware(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start) * 1000
+    app_logger.info(f"{request.method} {request.url.path} -> {response.status_code} ({duration_ms:.1f}ms)")
+    return response
+
 
 # CORS Middleware configuration
 app.add_middleware(

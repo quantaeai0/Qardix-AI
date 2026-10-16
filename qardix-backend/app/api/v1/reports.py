@@ -118,4 +118,5 @@ async def get_report_detail(
         validation_status=validation_status,
         doctor_notes=doctor_notes,
         image_url=image_url,
+        clinical_report=(ai.raw_output_json or {}).get("clinical_report") if ai else None,
     )

@@ -35,3 +35,4 @@ class ReportDetailResponse(BaseModel):
     validation_status: Optional[str] = None
     doctor_notes: Optional[str] = None
     image_url: Optional[str] = None
+    clinical_report: Optional[Dict[str, Any]] = None

@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     COLAB_INFERENCE_URL: str = ""
     COLAB_API_KEY: str = ""
 
+    # Groq LLM Clinical Reasoning (qwen/qwen3.8-27b)
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "qwen/qwen3.8-27b"
+    
+
     @property
     def inference_backend_normalised(self) -> str:
         return (self.INFERENCE_BACKEND or "mock").strip().lower()
