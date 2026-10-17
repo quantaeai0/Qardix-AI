@@ -319,6 +319,12 @@ async def upload_and_process_ecg(
             "model_version":       ai_result_data.model_version,
             "clinical_disclaimer": ai_result_data.clinical_disclaimer,
             "clinical_report":     ai_result_data.raw_output_json.get("clinical_report"),
+            "plot_png_base64":     ai_result_data.raw_output_json.get("plot_png_base64"),
+            "digitised_leads":     ai_result_data.raw_output_json.get("digitised_leads"),
+            "reconstructed_leads": ai_result_data.raw_output_json.get("reconstructed_leads"),
+            "lead_quality":        ai_result_data.raw_output_json.get("lead_quality"),
+            "signal_info":         ai_result_data.raw_output_json.get("signal_info"),
+            "warnings":            ai_result_data.raw_output_json.get("warnings", []),
         },
     }
 
@@ -362,5 +368,11 @@ async def get_ecg_and_ai_result(
             "patient_explanation": ecg.ai_result.patient_explanation,
             "warning_signs":       ecg.ai_result.warning_signs,
             "clinical_report":     (ecg.ai_result.raw_output_json or {}).get("clinical_report"),
+            "plot_png_base64":     (ecg.ai_result.raw_output_json or {}).get("plot_png_base64"),
+            "digitised_leads":     (ecg.ai_result.raw_output_json or {}).get("digitised_leads"),
+            "reconstructed_leads": (ecg.ai_result.raw_output_json or {}).get("reconstructed_leads"),
+            "lead_quality":        (ecg.ai_result.raw_output_json or {}).get("lead_quality"),
+            "signal_info":         (ecg.ai_result.raw_output_json or {}).get("signal_info"),
+            "warnings":            (ecg.ai_result.raw_output_json or {}).get("warnings", []),
         } if ecg.ai_result else None,
     }

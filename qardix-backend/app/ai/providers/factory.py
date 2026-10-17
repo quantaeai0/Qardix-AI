@@ -29,18 +29,14 @@ def get_inference_provider() -> ModelInferenceProvider:
     """
     backend = (settings.INFERENCE_BACKEND or "mock").strip().lower()
 
-    if backend == "mock":
-        return MockInferenceProvider()
-    elif backend == "colab":
+    if backend == "colab":
         return ColabInferenceProvider()
     elif backend == "local":
         return LocalInferenceProvider()
-    else:
-        # Unknown value — fall back to mock and warn
-        import logging
-        logging.warning(
-            f"Unknown INFERENCE_BACKEND='{backend}'. "
-            "Falling back to MockInferenceProvider. "
-            "Valid values: mock | colab | local"
-        )
+    elif backend == "mock":
         return MockInferenceProvider()
+    else:
+        raise ValueError(
+            f"Invalid INFERENCE_BACKEND='{backend}'. "
+            "Must be 'colab', 'local', or 'mock'. Fallback to mock is disabled."
+        )

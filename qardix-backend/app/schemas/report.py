@@ -36,3 +36,7 @@ class ReportDetailResponse(BaseModel):
     doctor_notes: Optional[str] = None
     image_url: Optional[str] = None
     clinical_report: Optional[Dict[str, Any]] = None
+    plot_png_base64: Optional[str] = None
+    digitised_leads: Optional[List[str]] = None
+    reconstructed_leads: Optional[List[str]] = None
+    lead_quality: Optional[Dict[str, Any]] = None

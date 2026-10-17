@@ -517,3 +517,127 @@ class TestColabUnifiedPipeline:
                 assert any("Delta Wave" in f.label for f in result.findings)
                 assert result.inference_provider == "colab"
                 assert result.patient_explanation is not None
+
+    def test_colab_real_fastapi_schema_parsing(self):
+        """Verifies ColabInferenceProvider parses the production Colab FastAPI schema with predictions, job_id, digitised_leads."""
+        from app.ai.providers.colab_provider import ColabInferenceProvider
+        from app.ai.postprocessing.prediction_normaliser import normalise_prediction
+        import httpx
+
+        real_colab_response = {
+            "status": "success",
+            "filename": "ecg_printout.png",
+            "job_id": "d7a5b3c2e1f4",
+            "digitised_leads": ["I", "II", "V1", "V2", "V4", "V5", "V6"],
+            "reconstructed_leads": ["III", "aVR", "aVL", "aVF", "V3"],
+            "warnings": ["Lead V3: 100% of the 10 s had no data and was set to 0."],
+            "timings": {"digitise_s": 12.45, "wcr_s": 0.15},
+            "lead_quality": {"independent_measured": 7, "of": 8, "level": "good"},
+            "predictions": [
+                {"label": "Sinusal", "probability": 0.98521, "threshold": 0.80755, "above_threshold": True},
+                {"label": "Regular", "probability": 0.95421, "threshold": 0.84691, "above_threshold": True},
+                {"label": "Left bundle branch block", "probability": 0.02111, "threshold": 0.05121, "above_threshold": False},
+            ],
+            "plot_png_base64": "iVBORw0KGgoAAAANSUhEUgAA...",
+        }
+
+        mock_resp = httpx.Response(200, json=real_colab_response)
+
+        with patch("app.ai.providers.colab_provider.settings") as mock_settings:
+            mock_settings.COLAB_INFERENCE_URL = "https://colab-tunnel.trycloudflare.com"
+            mock_settings.COLAB_API_KEY = "b9LNsmMK68hqNE_lQ-jIlFiT9SPpi9z8"
+
+            with patch("httpx.AsyncClient") as mock_client:
+                mock_inst = mock_client.return_value.__aenter__.return_value
+                mock_inst.post = AsyncMock(return_value=mock_resp)
+
+                provider = ColabInferenceProvider()
+                raw = asyncio.get_event_loop().run_until_complete(
+                    provider.predict_image(b"fake-bytes", "ecg_printout.png")
+                )
+
+                assert raw.inference_provider == "colab"
+                assert "Sinusal" in raw.logits
+                assert raw.logits["Sinusal"] == 0.98521
+                assert raw.raw_output["job_id"] == "d7a5b3c2e1f4"
+                assert raw.raw_output["plot_png_base64"] == "iVBORw0KGgoAAAANSUhEUgAA..."
+
+                # Check normalisation
+                norm = normalise_prediction(raw)
+                labels = [f.label for f in norm.findings]
+                assert "Normal Sinus Rhythm" in labels
+                assert "Regular Rhythm" in labels
+                # Normal rhythms should not flag abnormal leads
+                assert norm.abnormal_leads == []
+
+    def test_colab_digitize_and_predict_signal_endpoints(self):
+        """Verifies ColabInferenceProvider digitize_image and predict_signal endpoints."""
+        from app.ai.providers.colab_provider import ColabInferenceProvider
+        import httpx
+
+        mock_digitize_resp = httpx.Response(200, json={
+            "status": "success",
+            "filename": "ecg.png",
+            "signal": {"fs": 250, "leads": ["I", "II"], "data": [[0.1, 0.2], [-0.1, 0.05]]},
+            "plot_png_base64": "plot_b64_data",
+        })
+
+        mock_signal_resp = httpx.Response(200, json={
+            "status": "success",
+            "predictions": [
+                {"label": "Sinusal", "probability": 0.9912, "threshold": 0.80, "above_threshold": True}
+            ],
+        })
+
+        with patch("app.ai.providers.colab_provider.settings") as mock_settings:
+            mock_settings.COLAB_INFERENCE_URL = "https://colab-tunnel.trycloudflare.com"
+            mock_settings.COLAB_API_KEY = "b9LNsmMK68hqNE_lQ-jIlFiT9SPpi9z8"
+
+            with patch("httpx.AsyncClient") as mock_client:
+                mock_inst = mock_client.return_value.__aenter__.return_value
+                mock_inst.post = AsyncMock(side_effect=[mock_digitize_resp, mock_signal_resp])
+
+                provider = ColabInferenceProvider()
+
+                # Test digitize
+                dig_res = asyncio.get_event_loop().run_until_complete(
+                    provider.digitize_image(b"fake_ecg_bytes", "ecg.png")
+                )
+                assert dig_res["status"] == "success"
+                assert dig_res["plot_png_base64"] == "plot_b64_data"
+
+                # Test predict_signal
+                pred_sig = asyncio.get_event_loop().run_until_complete(
+                    provider.predict_signal([[0.1] * 2500] * 12, fs=250.0, top_k=5)
+                )
+                assert pred_sig.inference_provider == "colab"
+                assert pred_sig.logits["Sinusal"] == 0.9912
+
+    def test_colab_acute_infarction_urgency_mapping(self):
+        """Verifies that an acute MI returned from Colab triggers URGENT classification and lead mapping."""
+        from app.ai.schema import RawPrediction
+        from app.ai.postprocessing.prediction_normaliser import normalise_prediction
+        from app.ai.postprocessing.urgency_engine import classify_urgency, UrgencyLevel
+
+        raw = RawPrediction(
+            logits={"Inferior Myocardial Infarction": 0.94, "Sinusal": 0.91},
+            top_findings=[
+                {"label": "Inferior Myocardial Infarction", "probability": 0.94, "threshold": 0.45, "above_threshold": True},
+                {"label": "Sinusal", "probability": 0.91, "threshold": 0.80, "above_threshold": True},
+            ],
+            model_name="deepecg_wcr77_colab",
+            model_version="1.0.0",
+            inference_provider="colab",
+            raw_output={},
+        )
+
+        norm = normalise_prediction(raw)
+        assert any("Inferior Myocardial Infarction" in f.label for f in norm.findings)
+        assert "II" in norm.abnormal_leads
+        assert "III" in norm.abnormal_leads
+        assert "aVF" in norm.abnormal_leads
+
+        urgency = classify_urgency(norm)
+        assert urgency.level == UrgencyLevel.URGENT
+
+

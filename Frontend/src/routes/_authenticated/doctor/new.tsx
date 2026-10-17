@@ -161,6 +161,12 @@ function Wizard() {
         patient_explanation: ai.patient_explanation,
         warning_signs: ai.warning_signs || [],
         clinical_report: ai.clinical_report ?? null,
+        plot_png_base64: ai.plot_png_base64 ?? null,
+        digitised_leads: ai.digitised_leads ?? [],
+        reconstructed_leads: ai.reconstructed_leads ?? [],
+        lead_quality: ai.lead_quality ?? null,
+        signal_info: ai.signal_info ?? null,
+        warnings: ai.warnings ?? [],
       };
 
       setIds({ assessment: assessment.id, ai: ai.id });

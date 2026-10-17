@@ -1,4 +1,4 @@
-﻿import {
+import {
   AlertTriangle, CheckCircle2, HeartPulse, ShieldCheck,
   Activity, TrendingUp, Zap, Clock, Gauge, Star,
 } from "lucide-react";
@@ -164,12 +164,41 @@ function Page1({ b, cr }: { b: ReportBundle; cr: ClinicalReport | null }) {
         </section>
       )}
 
-      {/* ECG Image */}
+      {/* ECG Waveform Preview */}
       <Section title="ECG Waveform Preview">
-        {b.imageUrl
-          ? <img src={b.imageUrl} alt="Uploaded 12-lead ECG" className="max-h-80 w-full rounded-xl border object-contain" />
-          : <EcgPlaceholder label="Demo record — ECG waveform reference" />
-        }
+        {b.digitisedPlotUrl ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">Digitized 12-Lead Waveform Reconstruction</span>
+              {b.ai?.lead_quality && (
+                <span className="rounded bg-signal/10 px-2 py-0.5 font-mono text-[11px] text-signal font-medium">
+                  Digitisation Quality: {b.ai.lead_quality.level.toUpperCase()} ({b.ai.lead_quality.independent_measured}/{b.ai.lead_quality.of} leads)
+                </span>
+              )}
+            </div>
+            <img
+              src={b.digitisedPlotUrl}
+              alt="Digitized 12-lead ECG waveform"
+              className="max-h-96 w-full rounded-xl border bg-white object-contain shadow-sm"
+            />
+            {b.imageUrl && (
+              <details className="text-xs text-muted-foreground">
+                <summary className="cursor-pointer font-medium hover:text-foreground">
+                  View Original Uploaded Image
+                </summary>
+                <img
+                  src={b.imageUrl}
+                  alt="Original uploaded ECG"
+                  className="mt-2 max-h-80 w-full rounded-xl border object-contain"
+                />
+              </details>
+            )}
+          </div>
+        ) : b.imageUrl ? (
+          <img src={b.imageUrl} alt="Uploaded 12-lead ECG" className="max-h-80 w-full rounded-xl border object-contain" />
+        ) : (
+          <EcgPlaceholder label="Demo record — ECG waveform reference" />
+        )}
         <p className="mt-2 text-[10px] text-muted-foreground">
           Illustrative preview only. Refer to original tracing for clinical verification.
         </p>

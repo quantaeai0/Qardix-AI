@@ -148,7 +148,7 @@ class ECGPipeline:
             return _quality_failed_result(quality_reason)
 
         # ── Stages 3–7: Inference (Direct Colab vs. Local/Mock Pipeline) ─────
-        if self._backend == "colab" and hasattr(self.provider, "predict_image"):
+        if self.provider.provider_name == "colab":
             logger.info("Stages 3–7: Delegating end-to-end digitisation + inference to Colab")
             raw_prediction = await self.provider.predict_image(
                 image_bytes=image_bytes,
@@ -163,8 +163,8 @@ class ECGPipeline:
             preprocessed = preprocess_ecg_image(image_bytes)
 
             # ── Stage 4: ECG Digitisation ─────────────────────────────────────
-            logger.debug(f"Stage 4: Digitisation (backend={self._backend})")
-            digitiser_output = await digitise_ecg(preprocessed, backend=self._backend)
+            logger.debug(f"Stage 4: Digitisation (backend={self.provider.provider_name})")
+            digitiser_output = await digitise_ecg(preprocessed, backend=self.provider.provider_name)
             digitiser_version = digitiser_output.digitiser_version
 
             # ── Stage 5: Waveform Validation ──────────────────────────────────

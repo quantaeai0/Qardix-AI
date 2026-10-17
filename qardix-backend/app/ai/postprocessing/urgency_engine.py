@@ -30,24 +30,34 @@ from app.ai.schema import NormalisedPrediction, UrgencyResult, UrgencyLevel
 
 URGENT_FINDING_PATTERNS: list[str] = [
     "ST-Elevation Myocardial Infarction",
+    "Myocardial Infarction",
+    "STEMI",
     "Ventricular Fibrillation",
     "Ventricular Tachycardia",
     "Third Degree AV Block",
     "Complete Heart Block",
     "Torsades de Pointes",
+    "Acute Coronary Syndrome",
 ]
 
 REVIEW_SOON_FINDING_PATTERNS: list[str] = [
     "Atrial Fibrillation",
     "Atrial Tachycardia",
+    "Atrial Flutter",
     "ST Depression",
     "T-Wave Inversion",
     "Left Bundle Branch Block",
+    "Right Bundle Branch Block",
     "Second Degree AV Block",
+    "First Degree AV Block",
     "Left Ventricular Hypertrophy",
+    "Right Ventricular Hypertrophy",
     "Wolff-Parkinson-White",
     "Delta Wave",
     "Sinus Tachycardia",
+    "Sinus Bradycardia",
+    "Premature Ventricular",
+    "Long QT",
 ]
 
 # High-confidence threshold for URGENT promotion
@@ -79,7 +89,7 @@ def classify_urgency(prediction: NormalisedPrediction) -> UrgencyResult:
         high_conf_findings = [
             f for f in prediction.findings
             if f.probability >= URGENT_CONFIDENCE_THRESHOLD
-            and f.label != "Normal Sinus Rhythm"
+            and f.label not in ("Normal Sinus Rhythm", "Regular Rhythm", "No significant findings above threshold")
         ]
         for f in high_conf_findings:
             rule = f"High-confidence abnormality (p={f.probability:.2f}): {f.label}"

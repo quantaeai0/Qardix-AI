@@ -44,8 +44,9 @@ async def run_ecg_inference(image_path: str, assessment_data: Dict[str, Any]) ->
                 )
                 if res.status_code == 200:
                     return res.json()
+                raise RuntimeError(f"Colab returned HTTP {res.status_code}: {res.text}")
         except Exception as e:
-            print(f"Colab inference failed, falling back to built-in clinical pipeline: {e}")
+            raise RuntimeError(f"Colab inference failed: {e}. Fallback to mock is disabled.")
 
     # Built-in deterministic fallback AI pipeline matching WCR-77 findings format
     age = assessment_data.get("age", 50)

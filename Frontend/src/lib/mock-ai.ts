@@ -1,4 +1,4 @@
-﻿export type Urgency = "routine" | "review_soon" | "urgent";
+export type Urgency = "routine" | "review_soon" | "urgent";
 
 export interface EcgAnalysisInput {
   age: number;
@@ -89,6 +89,12 @@ export interface EcgAnalysisResult {
   warning_signs: string[];
   model_version: string;
   clinical_report?: ClinicalReport;
+  plot_png_base64?: string | null;
+  digitised_leads?: string[];
+  reconstructed_leads?: string[];
+  lead_quality?: { independent_measured: number; of: number; level: string; unresolved_fraction_set_to_zero?: Record<string, number> };
+  signal_info?: { duration_s: number; implied_ptbxl_scale_factor: number };
+  warnings?: string[];
 }
 
 export const URGENCY_LABEL: Record<Urgency, string> = {

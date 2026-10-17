@@ -119,4 +119,8 @@ async def get_report_detail(
         doctor_notes=doctor_notes,
         image_url=image_url,
         clinical_report=(ai.raw_output_json or {}).get("clinical_report") if ai else None,
+        plot_png_base64=(ai.raw_output_json or {}).get("plot_png_base64") if ai else None,
+        digitised_leads=(ai.raw_output_json or {}).get("digitised_leads") if ai else None,
+        reconstructed_leads=(ai.raw_output_json or {}).get("reconstructed_leads") if ai else None,
+        lead_quality=(ai.raw_output_json or {}).get("lead_quality") if ai else None,
     )

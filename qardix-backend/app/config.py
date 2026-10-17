@@ -52,9 +52,14 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]
 
 
-@lru_cache
 def get_settings() -> Settings:
     return Settings()
 
 
-settings = get_settings()
+class _SettingsProxy:
+    """Dynamic proxy that guarantees live reads from .env without stale cache."""
+    def __getattr__(self, name: str):
+        return getattr(get_settings(), name)
+
+
+settings = _SettingsProxy()
