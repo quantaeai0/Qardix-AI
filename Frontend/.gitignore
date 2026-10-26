@@ -8,7 +8,7 @@ pnpm-debug.log*
 lerna-debug.log*
 .lovable/
 node_modules
-supabase/
+/supabase/
 
 dist
 dist-ssr
