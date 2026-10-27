@@ -49,8 +49,10 @@ async def log_requests_middleware(request: Request, call_next):
 # CORS Middleware configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.origins_list,
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:[0-9]+)?",
+    # allow_origins=settings.origins_list,
+    allow_origins=["*"],
+    allow_origin_regex=".*",
+    # allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:[0-9]+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
