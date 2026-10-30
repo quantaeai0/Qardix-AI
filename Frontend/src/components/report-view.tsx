@@ -249,7 +249,7 @@ function Page1({ b, cr }: { b: ReportBundle; cr: ClinicalReport | null }) {
                   <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider">#</th>
                   <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider">AI Finding</th>
                   <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider">Lead / Region</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider">Confidence</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider">Model Confidence</th>
                   <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider">Doctor Review</th>
                 </tr>
               </thead>

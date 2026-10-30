@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Activity, AlertTriangle, ArrowRight, ClipboardList, FileHeart, HeartPulse, Lock, MessageSquareHeart, ShieldCheck, Stethoscope, Upload, UserCheck } from "lucide-react";
 import hero from "@/assets/hero-ecg.jpg";
+import quantaeLogo from "@/assets/quantae-logo.png";
 import { Logo, EcgLine } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 
@@ -38,7 +39,11 @@ function Home() {
     <div className="min-h-screen bg-background">
       <header className="absolute inset-x-0 top-0 z-20">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-5 sm:px-8">
-          <Logo light />
+          <div className="flex items-center gap-3">
+            <Logo light />
+            <div className="hidden h-5 w-px bg-navy-foreground/20 sm:block" />
+            <img src={quantaeLogo} alt="Quantae Technology" className="hidden h-6 w-auto opacity-80 hover:opacity-100 sm:block" />
+          </div>
           <div className="flex items-center gap-2">
             <Button asChild variant="ghost" className="hidden text-navy-foreground hover:bg-navy-foreground/10 hover:text-navy-foreground sm:inline-flex"><Link to="/request-demo">Request Demo</Link></Button>
             <Button asChild className="bg-signal text-signal-foreground hover:bg-signal/90"><Link to="/auth">Login</Link></Button>
@@ -50,8 +55,14 @@ function Home() {
         <div className="ecg-grid absolute inset-0 opacity-50" />
         <div className="relative mx-auto grid max-w-7xl gap-12 px-5 pb-20 pt-32 sm:px-8 lg:grid-cols-[1.05fr_1fr] lg:items-center lg:pb-28 lg:pt-40">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-signal/30 bg-signal/10 px-3 py-1 text-xs font-medium text-signal">
-              <span className="size-1.5 rounded-full bg-signal animate-pulse-dot" /> Cardiac signal intelligence
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="inline-flex items-center gap-2 rounded-full border border-signal/30 bg-signal/10 px-3 py-1 text-xs font-medium text-signal">
+                <span className="size-1.5 rounded-full bg-signal animate-pulse-dot" /> Cardiac signal intelligence
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium text-navy-foreground/80">
+                <span className="opacity-60">Engineered by</span>
+                <img src={quantaeLogo} alt="Quantae Technology" className="h-3.5 w-auto" />
+              </div>
             </div>
             <h1 className="mt-6 text-5xl font-semibold leading-[1.05] sm:text-6xl lg:text-7xl">
               Qardix <span className="text-signal">AI</span>

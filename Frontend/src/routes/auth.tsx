@@ -5,6 +5,7 @@ import { Loader2, Lock, Mail, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { authApi } from "@/lib/api-client";
 import { loadSessionInfo, ROLE_HOME, BLOCK_MESSAGES } from "@/lib/session";
+import quantaeLogo from "@/assets/quantae-logo.png";
 import { Logo, EcgLine } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -81,8 +82,16 @@ function LoginPage() {
     <div className="grid min-h-screen lg:grid-cols-[1.05fr_1fr]">
       <div className="relative hidden overflow-hidden bg-navy p-12 text-navy-foreground lg:flex lg:flex-col">
         <div className="ecg-grid absolute inset-0 opacity-60" />
-        <Link to="/" className="relative"><Logo light /></Link>
+        <Link to="/" className="relative flex items-center gap-3.5">
+          <Logo light />
+          <div className="h-5 w-px bg-navy-foreground/20" />
+          <img src={quantaeLogo} alt="Quantae Technology" className="h-6 w-auto opacity-80 hover:opacity-100" />
+        </Link>
         <div className="relative mt-auto">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium text-navy-foreground/80">
+            <span className="opacity-60">Engineered by</span>
+            <img src={quantaeLogo} alt="Quantae Technology" className="h-3.5 w-auto" />
+          </div>
           <EcgLine animated className="mb-10 h-20 text-signal" />
           <h2 className="max-w-md text-4xl font-semibold leading-tight">Cardiac signal intelligence, reviewed by doctors.</h2>
           <p className="mt-4 max-w-md text-navy-foreground/70">Every AI-assisted result passes through mandatory doctor validation before a report is issued.</p>
@@ -90,7 +99,11 @@ function LoginPage() {
       </div>
       <div className="flex items-center justify-center px-5 py-12">
         <div className="w-full max-w-md">
-          <Link to="/" className="mb-10 inline-block lg:hidden"><Logo /></Link>
+          <div className="mb-8 flex items-center gap-3 lg:hidden">
+            <Link to="/"><Logo /></Link>
+            <div className="h-5 w-px bg-border" />
+            <img src={quantaeLogo} alt="Quantae Technology" className="h-5 w-auto brightness-0 contrast-100 opacity-70" />
+          </div>
           <h1 className="text-3xl font-semibold text-foreground">Welcome back</h1>
           <p className="mt-2 text-sm text-muted-foreground">Sign in with the login ID issued by your program administrator.</p>
 
@@ -139,6 +152,10 @@ function LoginPage() {
               ))}
             </div>
           </div>
+
+          <p className="mt-8 text-center text-xs text-muted-foreground">
+            Powered by <span className="font-semibold text-foreground">Quantae Technology</span> · Secure enterprise clinical platform
+          </p>
         </div>
       </div>
     </div>
