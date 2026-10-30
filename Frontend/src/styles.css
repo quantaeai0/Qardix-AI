@@ -127,5 +127,13 @@
 
 @media print {
   .no-print { display: none !important; }
-  body { background: white; }
+  body { background: white; margin: 0; padding: 0; }
+  .report-page {
+    break-after: page;
+    page-break-after: always;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    border: none !important;
+    margin-bottom: 0 !important;
+  }
 }

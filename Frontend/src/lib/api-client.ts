@@ -1,5 +1,29 @@
 const API_BASE_URL = import.meta.env["VITE_API_URL"] || "http://localhost:8000/api/v1";
 
+export function extractErrorMessage(errorData: any, fallback: string = "Request failed"): string {
+  if (!errorData) return fallback;
+  if (typeof errorData === "string") return errorData;
+  if (typeof errorData.detail === "string") return errorData.detail;
+  if (Array.isArray(errorData.detail)) {
+    return errorData.detail
+      .map((item: any) => {
+        if (typeof item === "string") return item;
+        if (item?.msg) {
+          const loc = Array.isArray(item?.loc) ? item.loc.filter((l: any) => l !== "body").join(".") : "";
+          return loc ? `${loc}: ${item.msg}` : item.msg;
+        }
+        return JSON.stringify(item);
+      })
+      .join(", ");
+  }
+  if (typeof errorData.detail === "object" && errorData.detail !== null) {
+    return errorData.detail.message || errorData.detail.msg || JSON.stringify(errorData.detail);
+  }
+  if (typeof errorData.message === "string") return errorData.message;
+  if (typeof errorData.error === "string") return errorData.error;
+  return fallback;
+}
+
 export function getAuthHeader(): Record<string, string> {
   const token = localStorage.getItem("qardix_access_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -21,8 +45,8 @@ export async function apiRequest<T = any>(
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ detail: "Network request failed" }));
-    throw new Error(errorData.detail || `Request failed with status ${response.status}`);
+    const errorData = await response.json().catch(() => null);
+    throw new Error(extractErrorMessage(errorData, `Request failed with status ${response.status}`));
   }
 
   return response.json();
@@ -122,8 +146,8 @@ export const assessmentApi = {
     });
 
     if (!response.ok) {
-      const err = await response.json().catch(() => ({ detail: "Quality check failed" }));
-      throw new Error(err.detail || "Quality check failed");
+      const err = await response.json().catch(() => null);
+      throw new Error(extractErrorMessage(err, "Quality check failed"));
     }
 
     return response.json();
@@ -144,8 +168,8 @@ export const assessmentApi = {
     });
 
     if (!response.ok) {
-      const err = await response.json().catch(() => ({ detail: "Upload failed" }));
-      throw new Error(err.detail || "ECG upload failed");
+      const err = await response.json().catch(() => null);
+      throw new Error(extractErrorMessage(err, "ECG upload failed"));
     }
 
     return response.json();

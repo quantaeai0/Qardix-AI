@@ -67,7 +67,13 @@ function LoginPage() {
       navigate({ to: ROLE_HOME[info.role], replace: true });
     } catch (err: any) {
       setLoading(false);
-      toast.error(err.message || "Invalid login credentials");
+      const msg =
+        typeof err?.message === "string" && err.message !== "[object Object]"
+          ? err.message
+          : typeof err === "string"
+            ? err
+            : "Invalid login credentials";
+      toast.error(msg);
     }
   }
 

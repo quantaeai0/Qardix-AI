@@ -71,7 +71,8 @@ function PriorityBadge({ priority }: { priority: string }) {
     REVIEW_SOON: { cls: "bg-soon text-white border-soon", label: "REVIEW SOON" },
     ROUTINE: { cls: "bg-routine text-white border-routine", label: "ROUTINE" },
   };
-  const c = conf[priority] ?? conf.ROUTINE;
+  const fallback = { cls: "bg-routine text-white border-routine", label: "ROUTINE" };
+  const c = conf[priority] ?? fallback;
   return (
     <span className={cn("inline-flex items-center rounded-lg border px-4 py-2 text-sm font-bold tracking-wide", c.cls)}>
       {c.label}
@@ -88,7 +89,11 @@ function Page1({ b, cr }: { b: ReportBundle; cr: ClinicalReport | null }) {
   const ai = b.ai;
 
   return (
-    <div className="overflow-hidden rounded-3xl border bg-card shadow-[var(--shadow-lift)] print:shadow-none">
+    <div
+      id="qardix-report-page-1"
+      data-report-page="1"
+      className="report-page overflow-hidden rounded-3xl border bg-card shadow-[var(--shadow-lift)] print:shadow-none print:rounded-none print:border-none"
+    >
       {/* Header */}
       <header className="relative flex flex-wrap items-start justify-between gap-4 bg-navy px-6 py-6 text-navy-foreground sm:px-8">
         <div>
@@ -178,6 +183,7 @@ function Page1({ b, cr }: { b: ReportBundle; cr: ClinicalReport | null }) {
             </div>
             <img
               src={b.digitisedPlotUrl}
+              crossOrigin="anonymous"
               alt="Digitized 12-lead ECG waveform"
               className="max-h-96 w-full rounded-xl border bg-white object-contain shadow-sm"
             />
@@ -188,6 +194,7 @@ function Page1({ b, cr }: { b: ReportBundle; cr: ClinicalReport | null }) {
                 </summary>
                 <img
                   src={b.imageUrl}
+                  crossOrigin="anonymous"
                   alt="Original uploaded ECG"
                   className="mt-2 max-h-80 w-full rounded-xl border object-contain"
                 />
@@ -195,7 +202,7 @@ function Page1({ b, cr }: { b: ReportBundle; cr: ClinicalReport | null }) {
             )}
           </div>
         ) : b.imageUrl ? (
-          <img src={b.imageUrl} alt="Uploaded 12-lead ECG" className="max-h-80 w-full rounded-xl border object-contain" />
+          <img src={b.imageUrl} crossOrigin="anonymous" alt="Uploaded 12-lead ECG" className="max-h-80 w-full rounded-xl border object-contain" />
         ) : (
           <EcgPlaceholder label="Demo record — ECG waveform reference" />
         )}
@@ -301,6 +308,12 @@ function Page1({ b, cr }: { b: ReportBundle; cr: ClinicalReport | null }) {
           </Section>
         </>
       )}
+
+      {/* Page 1 Footer */}
+      <footer className="flex flex-wrap items-center justify-between border-t bg-muted/40 px-6 py-3 text-xs text-muted-foreground sm:px-8">
+        <p>Powered by QUANTAE TECHNOLOGY</p>
+        <p>Qardix AI · Doctor Clinical Intelligence Report · Page 1 of 2</p>
+      </footer>
     </div>
   );
 }
@@ -313,7 +326,11 @@ function Page2({ b, cr }: { b: ReportBundle; cr: ClinicalReport | null }) {
   const a = b.assessment;
 
   return (
-    <div className="overflow-hidden rounded-3xl border bg-card shadow-[var(--shadow-lift)] print:shadow-none">
+    <div
+      id="qardix-report-page-2"
+      data-report-page="2"
+      className="report-page overflow-hidden rounded-3xl border bg-card shadow-[var(--shadow-lift)] print:shadow-none print:rounded-none print:border-none"
+    >
       {/* P2 Header */}
       <header className="flex flex-wrap items-start justify-between gap-4 bg-navy px-6 py-6 text-navy-foreground sm:px-8">
         <div>
